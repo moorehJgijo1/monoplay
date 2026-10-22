@@ -756,7 +756,7 @@ export function createBoard3D(container, E, opts = {}) {
   function simulateThrow(center, toward) {
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0), allowSleep: true });
     const dieMat = new CANNON.Material('die'), hardMat = new CANNON.Material('hard');
-    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.32, restitution: 0.52 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.6, restitution: 0.45 }));
     world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, { friction: 0.15, restitution: 0.6 }));
     const addStatic = (shape, x, y, z) => { const b = new CANNON.Body({ mass: 0, material: hardMat }); b.addShape(shape); b.position.set(x, y, z); world.addBody(b); };
     const ground = new CANNON.Body({ mass: 0, material: hardMat });
@@ -779,15 +779,18 @@ export function createBoard3D(container, E, opts = {}) {
       if (alive[k] && near(p.x, p.z)) addStatic(new CANNON.Cylinder(0.45, 0.45, 1.5, 12), p.x, 0.3 + 0.75, p.z);
     });
     const side = new THREE.Vector3(-toward.z, 0, toward.x);
+    const from = Math.random() < 0.5 ? -1 : 1; // 这次从左上方还是右上方抛进来
     const dice = [-1, 1].map(sgn => {
       const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.3, linearDamping: 0.02, angularDamping: 0.1 });
       b.addShape(new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)));
-      // 从画面上方之外的高空一边旋转一边落下，砸在玩家附近，再弹跳、翻滚、滑行
-      const start = center.clone().addScaledVector(toward, 1.6 + Math.random() * 0.6).addScaledVector(side, sgn * (1.3 + Math.random() * 0.4));
-      b.position.set(start.x, 10 + Math.random() * 1.5, start.z);
+      // 从镜头一侧的斜上方抛进来：按高度和重力算出水平速度，让骰子沿一条斜线正好落在玩家前方，再继续往前弹跳翻滚
+      const start = center.clone().addScaledVector(toward, 3.6 + Math.random() * 0.8).addScaledVector(side, from * (2.4 + Math.random() * 0.8) + sgn * 0.5);
+      const h = 7.5 + Math.random();
+      b.position.set(start.x, h, start.z);
+      const land = center.clone().addScaledVector(toward, 1.4 + Math.random() * 0.5).addScaledVector(side, sgn * 0.6 + from * 0.6);
+      const vy0 = -2, fall = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * 32 * (h - DIE / 2))) / 32;
       b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
-      const v = toward.clone().multiplyScalar(-(1.5 + Math.random() * 1.5)).addScaledVector(side, -sgn * (0.8 + Math.random() * 1.2));
-      b.velocity.set(v.x, -3 - Math.random() * 2, v.z);
+      b.velocity.set((land.x - start.x) / fall, vy0, (land.z - start.z) / fall);
       const spin = () => (Math.random() < 0.5 ? -1 : 1) * (15 + Math.random() * 15);
       b.angularVelocity.set(spin(), spin(), spin());
       world.addBody(b);
