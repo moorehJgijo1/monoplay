@@ -540,8 +540,6 @@ export function createBoard3D(container, E, opts = {}) {
 
   // ---------- 相机 ----------
   let viewMode = 'follow', focus = null;
-  let shake = 0;
-  const shakeOff = new THREE.Vector3();
   camera.position.set(0, 15, 15);
   controls.target.set(0, 0, 0);
   // 竖屏（手机）时视野窄，镜头要拉远一些
@@ -674,7 +672,6 @@ export function createBoard3D(container, E, opts = {}) {
       try { a.update(t); } catch (e) { console.error('动画出错，已跳过', e); failed = true; }
       if (t >= 1 || failed) { anims.splice(k, 1); a.resolve(); }
     }
-    camera.position.sub(shakeOff);
     // 相机平滑跟随
     const want = viewMode === 'follow' && focus !== null && pieces[focus] ? pieces[focus].group.position.clone().setY(0) : center.clone();
     const delta = want.sub(controls.target).multiplyScalar(1 - Math.pow(0.02, Math.min(rawDt, 0.25)));
@@ -696,12 +693,6 @@ export function createBoard3D(container, E, opts = {}) {
       else if (t.trail > 0) { t.trail = Math.max(0, t.trail - dt * 0.8); t.glow.material.opacity = t.trail * 0.55; }
       else t.glow.material.opacity = 0;
     });
-    // 撞击时镜头轻微震动，并很快衰减
-    if (shake > 0.002) {
-      shakeOff.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-      shake *= Math.pow(0.02, dt * 2.5);
-    } else { shakeOff.set(0, 0, 0); shake = 0; }
-    camera.position.add(shakeOff);
     renderer.render(scene, camera);
   }
   requestAnimationFrame(frame);
@@ -791,12 +782,12 @@ export function createBoard3D(container, E, opts = {}) {
     const dice = [-1, 1].map(sgn => {
       const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.3, linearDamping: 0.02, angularDamping: 0.03 });
       b.addShape(new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)));
-      // 从镜头这一侧低平地斜抛出去：先往上划一道弧，再落地弹跳、翻滚、滑行
-      const start = center.clone().addScaledVector(toward, 4.1).addScaledVector(side, sgn * 0.8);
-      b.position.set(start.x, 2.6 + Math.random() * 0.6, start.z);
+      // 从画面上方之外的高空一边旋转一边落下，砸在玩家附近，再弹跳、翻滚、滑行
+      const start = center.clone().addScaledVector(toward, 1.6 + Math.random() * 0.6).addScaledVector(side, sgn * (1.3 + Math.random() * 0.4));
+      b.position.set(start.x, 10 + Math.random() * 1.5, start.z);
       b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
-      const v = toward.clone().multiplyScalar(-(6 + Math.random() * 2)).addScaledVector(side, -sgn * (0.4 + Math.random() * 1.4));
-      b.velocity.set(v.x, 3 + Math.random() * 2, v.z);
+      const v = toward.clone().multiplyScalar(-(1.5 + Math.random() * 1.5)).addScaledVector(side, -sgn * (0.8 + Math.random() * 1.2));
+      b.velocity.set(v.x, -3 - Math.random() * 2, v.z);
       const spin = () => (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 22);
       b.angularVelocity.set(spin(), spin(), spin());
       world.addBody(b);
@@ -847,6 +838,15 @@ export function createBoard3D(container, E, opts = {}) {
     }
   }
 
+  function ripple(x, z, v) {
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 40), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.33, z);
+    scene.add(m);
+    const grow = 1.2 + Math.min(1.5, v / 10);
+    animate(420, t => { m.scale.setScalar(1 + t * grow); m.material.opacity = 0.55 * (1 - t); if (t >= 1) scene.remove(m); });
+  }
+
   async function rollDice(values, { speed = 1, onHit, onReveal } = {}) {
     const ref = focus !== null && pieces[focus] ? pieces[focus].group.position.clone().setY(0) : controls.target.clone().setY(0);
     const toward = camera.position.clone().sub(controls.target).setY(0).normalize();
@@ -873,11 +873,11 @@ export function createBoard3D(container, E, opts = {}) {
       scene.add(m);
       return m;
     });
-    // 每次碰撞：声音 + 扬尘 + 镜头震动
+    // 每次碰撞：声音 + 落点扬尘；重的撞击在地面泛起一圈冲击波纹（镜头保持稳定）
     const timers = hits.map(h => setTimeout(() => {
       if (onHit) onHit(h.v);
       if (h.v > 3) dust(h.x, h.z, h.v);
-      shake = Math.max(shake, Math.min(0.22, h.v * 0.018));
+      if (h.v > 6) ripple(h.x, h.z, h.v);
     }, (h.t * 1000) / speed));
     // 拖影：高速运动时身后跟着几个渐隐的残影
     const ghosts = meshes.map(() => [0.32, 0.2, 0.1].map(op => {
