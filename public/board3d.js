@@ -499,11 +499,17 @@ export function createBoard3D(container, E, opts = {}) {
   let selectable = null;
   let highlight = null;
   let forkArrows = [];
+  let forkHits = [];
+  let forkCells = null;
   let onFork = null;
-  function setFork(options, from, cb) {
-    forkArrows.forEach(a => scene.remove(a));
+  const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+  // cellMap：格子 → 方向。点到某条路上的任何格子（或它的地块）都算选了那个方向
+  function setFork(options, from, cb, cellMap) {
+    [...forkArrows, ...forkHits].forEach(a => scene.remove(a));
     forkArrows = [];
+    forkHits = [];
     onFork = cb || null;
+    forkCells = cellMap || null;
     if (!options) return;
     const fp = cellPos(from);
     options.forEach(o => {
@@ -518,11 +524,18 @@ export function createBoard3D(container, E, opts = {}) {
       headM.position.z = -0.45;
       g.add(shaft, headM);
       g.traverse(m => { m.userData.fork = o; m.castShadow = true; });
-      g.position.set(p.x, 0.9, p.z);
+      g.scale.setScalar(1.6);
+      g.position.set(p.x, 1.1, p.z);
       g.rotation.y = Math.atan2(-(p.x - fp.x), -(p.z - fp.z));
       g.userData.base = g.position.clone();
       scene.add(g);
       forkArrows.push(g);
+      // 看不见但很大的点击区域，盖住整个路口格子和箭头
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(U * 0.98, 2.6, U * 0.98), hitMat);
+      hit.position.set(p.x, 1.3, p.z);
+      hit.userData.fork = o;
+      scene.add(hit);
+      forkHits.push(hit);
     });
   }
 
@@ -566,9 +579,19 @@ export function createBoard3D(container, E, opts = {}) {
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
-    if (forkArrows.length) {
-      const hit = raycaster.intersectObjects(forkArrows, true)[0];
-      if (hit && onFork) { onFork(hit.object.userData.fork); return; }
+    if (onFork) {
+      // 选路时：点箭头、路口格子、那条路上的格子或地块都算选方向；都没点中就选离点击处最近的方向；不弹格子信息
+      const hit = raycaster.intersectObjects([...forkArrows, ...forkHits], true)[0];
+      if (hit) { onFork(hit.object.userData.fork); return; }
+      const h = raycaster.intersectObjects(scene.children, true).find(x => x.object.userData.cell !== undefined);
+      if (h && forkCells && forkCells.has(h.object.userData.cell)) { onFork(forkCells.get(h.object.userData.cell)); return; }
+      const pt = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt)) {
+        let best = null, bestD = U * 1.6;
+        forkHits.forEach(b => { const d = Math.hypot(b.position.x - pt.x, b.position.z - pt.z); if (d < bestD) { bestD = d; best = b.userData.fork; } });
+        if (best !== null) onFork(best);
+      }
+      return;
     }
     const hits = raycaster.intersectObjects(scene.children, true);
     const h = hits.find(x => x.object.userData.fork !== undefined || x.object.userData.cell !== undefined);
@@ -701,7 +724,7 @@ export function createBoard3D(container, E, opts = {}) {
     setSelectable(cells) { selectable = cells ? new Set(cells) : null; },
     // 金色闪烁：预计会停下的格子
     setHighlight(cells) { highlight = cells && cells.length ? new Set(cells) : null; },
-    setFork(options, from, cb) { setFork(options, from, cb); },
+    setFork(options, from, cb, cellMap) { setFork(options, from, cb, cellMap); },
     setView(mode) { setView(mode); },
     get viewMode() { return viewMode; },
     focusOn(k) { focus = k; },

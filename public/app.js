@@ -721,7 +721,7 @@ import { createBoard3D } from './board3d.js';
     const forkKey = canAct(s) && s.phase === 'fork' && s.fork ? `${s.turn}:${s.players[me].pos}:${s.fork.options}` : '';
     if (board && forkKey !== view.forkKey) {
       view.forkKey = forkKey;
-      board.setFork(forkKey ? s.fork.options : null, forkKey ? s.players[me].pos : null, to => send({ type: 'chooseFork', to }));
+      board.setFork(forkKey ? s.fork.options : null, forkKey ? s.players[me].pos : null, to => send({ type: 'chooseFork', to }), forkKey ? forkCellMap(s, me) : null);
       board.setHighlight(defaultHighlight());
     }
     syncModals(s);
@@ -874,6 +874,23 @@ import { createBoard3D } from './board3d.js';
   function hoverEnds(e) {
     const b = e.target.closest('[data-ends]');
     if (board) board.setHighlight(b ? b.dataset.ends.split(',').map(Number) : defaultHighlight());
+  }
+  // 每个方向沿路能走到的所有格子 → 该方向（用于在地图上点选方向）
+  function forkCellMap(s, me) {
+    const p = s.players[me], map = new Map();
+    s.fork.options.forEach(o => map.set(o, o));
+    s.fork.options.forEach(o => {
+      const walk = (at, from, left) => {
+        if (!map.has(at)) map.set(at, o);
+        if (left <= 1) return;
+        let f = E.ADJ[at].filter(n => n !== from);
+        if (!f.length) f = E.ADJ[at];
+        f.forEach(n => walk(n, at, left - 1));
+      };
+      walk(o, p.pos, s.fork.left);
+    });
+    map.delete(p.pos);
+    return map;
   }
   function defaultHighlight() {
     const s = ctrl && ctrl.state;
