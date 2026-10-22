@@ -756,14 +756,14 @@ export function createBoard3D(container, E, opts = {}) {
   function simulateThrow(center, toward) {
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0), allowSleep: true });
     const dieMat = new CANNON.Material('die'), hardMat = new CANNON.Material('hard');
-    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.6, restitution: 0.45 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.6, restitution: 0.4 }));
     world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, { friction: 0.15, restitution: 0.6 }));
     const addStatic = (shape, x, y, z) => { const b = new CANNON.Body({ mass: 0, material: hardMat }); b.addShape(shape); b.position.set(x, y, z); world.addBody(b); };
     const ground = new CANNON.Body({ mass: 0, material: hardMat });
     ground.addShape(new CANNON.Plane());
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     world.addBody(ground);
-    const R = 4.6, near = (x, z, pad = 1.5) => Math.abs(x - center.x) < R + pad && Math.abs(z - center.z) < R + pad;
+    const R = 6, near = (x, z, pad = 1.5) => Math.abs(x - center.x) < R + pad && Math.abs(z - center.z) < R + pad;
     // 抛掷区域四周的隐形墙，骰子不会飞出画面
     [[R, 0], [-R, 0], [0, R], [0, -R]].forEach(([dx, dz]) => addStatic(new CANNON.Box(new CANNON.Vec3(dx ? 0.25 : R + 0.25, 5, dz ? 0.25 : R + 0.25)), center.x + dx, 5, center.z + dz));
     // 路口格子、地块、房子、棋子都能撞
@@ -779,15 +779,26 @@ export function createBoard3D(container, E, opts = {}) {
       if (alive[k] && near(p.x, p.z)) addStatic(new CANNON.Cylinder(0.45, 0.45, 1.5, 12), p.x, 0.3 + 0.75, p.z);
     });
     const side = new THREE.Vector3(-toward.z, 0, toward.x);
-    const from = Math.random() < 0.5 ? -1 : 1; // 这次从左上方还是右上方抛进来
+    // 这次从哪个方向抛进来：以镜头方向为中心、左右各 120° 的扇形里随机取，高度和距离也随机
+    const ang = (Math.random() * 2 - 1) * (Math.PI * 2 / 3);
+    const dir = toward.clone().multiplyScalar(Math.cos(ang)).addScaledVector(side, Math.sin(ang));
+    const perp = new THREE.Vector3(-dir.z, 0, dir.x);
+    const h0 = 6 + Math.random() * 4;
+    // 落点随方向调整：从镜头这边扔来就落得近一点、往玩家那边滚；从后面扔来就落得远一点、往镜头这边滚
+    const landC = center.clone().addScaledVector(toward, 1.1 + 0.9 * Math.cos(ang) + Math.random() * 0.4).addScaledVector(side, (Math.random() - 0.5) * 1.6);
+    // 起点必须在围栏里面
+    const dist = Math.min(2 + Math.random() * 1.4, ...[1, -1].flatMap(sg => [toward, side].map(axis => {
+      const d = dir.dot(axis) * sg, room = R - 1 - landC.clone().sub(center).dot(axis) * sg;
+      return d > 0.05 ? room / d : Infinity;
+    })));
     const dice = [-1, 1].map(sgn => {
       const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.3, linearDamping: 0.02, angularDamping: 0.1 });
       b.addShape(new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)));
       // 从镜头一侧的斜上方抛进来：按高度和重力算出水平速度，让骰子沿一条斜线正好落在玩家前方，再继续往前弹跳翻滚
-      const start = center.clone().addScaledVector(toward, 3.6 + Math.random() * 0.8).addScaledVector(side, from * (2.4 + Math.random() * 0.8) + sgn * 0.5);
-      const h = 7.5 + Math.random();
+      const start = landC.clone().addScaledVector(dir, dist).addScaledVector(perp, sgn * 0.75);
+      const h = h0 + Math.random() * 0.6;
       b.position.set(start.x, h, start.z);
-      const land = center.clone().addScaledVector(toward, 1.4 + Math.random() * 0.5).addScaledVector(side, sgn * 0.6 + from * 0.6);
+      const land = landC.clone().addScaledVector(perp, sgn * 0.75);
       const vy0 = -2, fall = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * 32 * (h - DIE / 2))) / 32;
       b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
       b.velocity.set((land.x - start.x) / fall, vy0, (land.z - start.z) / fall);
@@ -801,6 +812,20 @@ export function createBoard3D(container, E, opts = {}) {
     dice.forEach((b, k) => b.addEventListener('collide', e => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
       if (v > 1.2 && time - lastHit[k] > 0.05) { hits.push({ t: time, v, x: b.position.x, z: b.position.z }); lastHit[k] = time; }
+      // 从高处落下撞击很猛，棱角着地会把骰子踢飞很远。像落在软桌面上一样：
+      // 第一次着地吸收大部分速度和旋转，第二次再吸收一些；之后照常弹跳翻滚，并加点滚动阻力
+      if (e.body.type !== CANNON.Body.STATIC) return; // 两颗骰子在空中互碰不算着地
+      b.hitCount = (b.hitCount || 0) + 1;
+      if (b.hitCount <= 2) {
+        const keep = b.hitCount === 1 ? 0.4 : 0.7;
+        b.velocity.scale(keep, b.velocity);
+        b.angularVelocity.scale(keep, b.angularVelocity);
+      }
+      // 撞到格子边缘、房子时水平速度最多 3.5：照样弹跳翻滚，但不会被踢飞到画面外
+      const hv = Math.hypot(b.velocity.x, b.velocity.z);
+      if (hv > 3.5) { b.velocity.x *= 3.5 / hv; b.velocity.z *= 3.5 / hv; }
+      b.linearDamping = Math.max(b.linearDamping, 0.35);
+      b.angularDamping = Math.max(b.angularDamping, 0.3);
     }));
     const frames = [];
     const STEP = 1 / 120;
