@@ -659,14 +659,18 @@ export function createBoard3D(container, E, opts = {}) {
   let last = performance.now();
   const clock = { t: 0 };
   function frame(now) {
-    const rawDt = (now - last) / 1000;
+    // 先排下一帧：即使下面哪里出错，画面也不会就此停住
+    requestAnimationFrame(frame);
+    const rawDt = Math.max(0, (now - last) / 1000);
     const dt = Math.min(0.05, rawDt);
     last = now;
     clock.t += dt;
+    // rAF 的时间戳可能比创建动画时取的 performance.now() 还早，所以 t 要夹在 0~1 之间
     for (let k = anims.length - 1; k >= 0; k--) {
-      const a = anims[k], t = Math.min(1, (now - a.t0) / a.ms);
-      a.update(t);
-      if (t >= 1) { anims.splice(k, 1); a.resolve(); }
+      const a = anims[k], t = Math.min(1, Math.max(0, (now - a.t0) / a.ms));
+      let failed = false;
+      try { a.update(t); } catch (e) { console.error('动画出错，已跳过', e); failed = true; }
+      if (t >= 1 || failed) { anims.splice(k, 1); a.resolve(); }
     }
     // 相机平滑跟随
     const want = viewMode === 'follow' && focus !== null && pieces[focus] ? pieces[focus].group.position.clone().setY(0) : center.clone();
@@ -690,7 +694,6 @@ export function createBoard3D(container, E, opts = {}) {
       else t.glow.material.opacity = 0;
     });
     renderer.render(scene, camera);
-    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
@@ -804,6 +807,15 @@ export function createBoard3D(container, E, opts = {}) {
       if (time > 0.6 && dice.every(b => b.sleepState === CANNON.Body.SLEEPING)) break;
     }
     return { frames, hits };
+  }
+
+  // 预先编译骰子的材质，避免第一次掷骰时卡一下
+  {
+    const warm = new THREE.Mesh(dieGeo, faceMats.slice(1));
+    warm.position.set(0, -20, 0);
+    scene.add(warm);
+    renderer.compile(scene, camera);
+    scene.remove(warm);
   }
 
   async function rollDice(values, { speed = 1, onHit, onReveal } = {}) {
