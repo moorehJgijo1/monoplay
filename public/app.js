@@ -830,7 +830,7 @@ import { createBoard3D } from './board3d.js';
       case 'buy': {
         const price = E.buyPrice(s, me, p.pos);
         html = `<h3>🏷️ 买下「${cell.name}」？</h3>
-          <p><span style="color:${GROUPS[cell.group].color}">■</span> ${GROUPS[cell.group].name}片区 · 价格 <b>${money(price)}</b>${price !== cell.price ? '（阿土伯 8 折）' : ''}<br>
+          <p>${GROUPS[cell.group].name}片区 · 价格 <b>${money(price)}</b>${price !== cell.price ? '（阿土伯 8 折）' : ''}<br>
           买下后基础过路费 ${money(cell.price / 10)}，盖楼后最高可达 ${shortMoney(cell.price / 10 * E.LEVEL_MULT[5])}<br>你的现金 ${money(p.cash)}</p>
           <div class="row"><button class="btn primary big" data-act="buy">💰 买！</button><button class="btn big" data-act="skip">不买</button></div>`;
         break;
@@ -1026,7 +1026,7 @@ import { createBoard3D } from './board3d.js';
     }
     const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
     const rows = LEVELS.map((name, L) => `<tr class="${owner && L === ld.level ? 'now' : ''}"><td>${LEVEL_EMOJI[L] || '🟩'} ${name}</td><td>${money(c.price / 10 * E.LEVEL_MULT[L])}</td></tr>`).join('');
-    openModal('info', `<h2><span style="color:${GROUPS[c.group].color}">■</span> ${c.name} <small class="hint">${GROUPS[c.group].name}片区</small></h2>
+    openModal('info', `<h2>${c.name} <small class="hint">${GROUPS[c.group].name}片区</small></h2>
       <p>地价 ${money(c.price)} · 每层加盖 ${money(E.upgradeCost(i))}<br>
       ${owner ? `地主：<b style="color:${owner.color}">${CHARACTERS[owner.char].emoji} ${esc(owner.name)}</b> · ${LEVELS[ld.level]} · 当前过路费 <b>${money(E.rentFor(s, i))}</b> · 总价 ${money(E.landValue(s, i))}` : '无主空地'}</p>
       <table class="info-table"><tr><td><b>建筑</b></td><td><b>基础过路费</b></td></tr>${rows}</table>

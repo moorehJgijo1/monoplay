@@ -247,18 +247,19 @@ export function createBoard3D(container, E, opts = {}) {
     g.textBaseline = 'middle';
     if (c.type === 'land') {
       const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
+      // 无主的地是中性的石板色；只有被买下后才染成地主的颜色（颜色只用来区分玩家）
       const grp = GROUPS[c.group];
-      g.fillStyle = owner ? owner.color : '#fbf6ea';
+      g.fillStyle = owner ? owner.color : '#f1ece0';
       g.fillRect(0, 0, 256, 256);
       if (owner) { g.fillStyle = 'rgba(255,255,255,.72)'; g.fillRect(14, 14, 228, 228); }
-      g.fillStyle = grp.color;
+      g.fillStyle = owner ? owner.color : '#5b6472';
       g.fillRect(0, 0, 256, 78);
       g.fillStyle = '#fff';
       g.font = `bold ${c.name.length > 2 ? 46 : 54}px ${FONT}`;
       g.fillText(c.name, 128, 42);
-      g.fillStyle = owner ? '#222' : '#7a5c3a';
-      g.font = `bold 40px ${FONT}`;
-      g.fillText(owner ? '过路费' : '地价', 128, 118);
+      g.fillStyle = owner ? '#222' : '#6b5a45';
+      g.font = `bold 34px ${FONT}`;
+      g.fillText(`${grp.name} · ${owner ? '过路费' : '地价'}`, 128, 118);
       g.font = `bold 50px ${FONT}`;
       const v = owner ? E.rentFor(s, i) : c.price;
       g.fillText(v >= 10000 ? '¥' + (v / 10000).toFixed(1).replace(/\.0$/, '') + '万' : '¥' + v.toLocaleString('en-US'), 128, 170);
@@ -268,11 +269,14 @@ export function createBoard3D(container, E, opts = {}) {
         g.fillText('★'.repeat(ld.level) + '☆'.repeat(5 - ld.level), 128, 222);
       }
     } else {
+      // 特殊格子只带一点淡淡的底色，主要靠图标区分，避免和玩家颜色混淆
       const [bg, icon] = TYPE_STYLE[c.type] || ['#eee', '❔'];
+      g.fillStyle = '#f7f3ea';
+      g.fillRect(0, 0, 256, 256);
+      g.globalAlpha = 0.28;
       g.fillStyle = bg;
       g.fillRect(0, 0, 256, 256);
-      g.fillStyle = 'rgba(255,255,255,.35)';
-      g.fillRect(12, 12, 232, 232);
+      g.globalAlpha = 1;
       g.font = `110px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${FONT}`;
       g.fillText(icon, 128, 108);
       g.fillStyle = '#2d1e10';
@@ -316,8 +320,7 @@ export function createBoard3D(container, E, opts = {}) {
   LANDS.forEach(i => {
     const [dx, dz] = lotDir[i], p = cellPos(i);
     const lc = new THREE.Vector3(p.x + dx * U * 0.95, 0, p.z + dz * U * 0.95);
-    const grp = GROUPS[BOARD[i].group];
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(U * 0.86, 0.14, U * 0.86), std(new THREE.Color(grp.color).lerp(new THREE.Color('#ffffff'), 0.55)));
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(U * 0.86, 0.14, U * 0.86), std('#d9d1bf'));
     plate.position.set(lc.x, 0.07, lc.z);
     plate.receiveShadow = true;
     plate.userData.cell = i;
@@ -326,7 +329,7 @@ export function createBoard3D(container, E, opts = {}) {
     holder.position.set(lc.x, 0.14, lc.z);
     holder.rotation.y = Math.atan2(-dx, -dz); // 正面（+z）朝向马路
     scene.add(holder);
-    lots[i] = { holder, center: lc, key: null, building: null };
+    lots[i] = { holder, plate, center: lc, key: null, building: null };
   });
 
   // 各等级的建筑。局部坐标里 +z 是正面（朝马路），屋顶、阳台、雨棚、楼冠用地主的颜色
@@ -409,20 +412,28 @@ export function createBoard3D(container, E, opts = {}) {
     g.userData.top = top;
     return g;
   }
-  function saleSign(color) {
-    const g = new THREE.Group();
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), std('#8b5a2b'));
-    post.position.y = 0.4;
+  // 待售牌：中性的木牌，所有空地共用一张贴图
+  const saleMats = (() => {
     const { ctx, tex } = makeCanvas(128, 64);
-    ctx.fillStyle = color;
+    ctx.fillStyle = '#ecdcb8';
     ctx.fillRect(0, 0, 128, 64);
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold 40px ${FONT}`;
+    ctx.strokeStyle = '#8b5a2b';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 122, 58);
+    ctx.fillStyle = '#5a3a1a';
+    ctx.font = `bold 38px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('待售', 64, 34);
     tex.needsUpdate = true;
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.38, 0.04), [std('#fff'), std('#fff'), std('#fff'), std('#fff'), new THREE.MeshStandardMaterial({ map: tex }), std('#fff')]);
+    const wood = std('#c9a26b');
+    return [wood, wood, wood, wood, new THREE.MeshStandardMaterial({ map: tex }), wood];
+  })();
+  function saleSign() {
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), std('#8b5a2b'));
+    post.position.y = 0.4;
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.38, 0.04), saleMats);
     board.position.y = 0.85;
     [post, board].forEach(m => { m.castShadow = true; g.add(m); });
     return g;
@@ -443,7 +454,8 @@ export function createBoard3D(container, E, opts = {}) {
     lot.key = key;
     lot.prev = { level: ld.level, owner: ld.owner };
     lot.holder.clear();
-    const b = owner ? makeBuilding(ld.level, owner.color) : saleSign(GROUPS[BOARD[i].group].color);
+    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.72) : '#d9d1bf');
+    const b = owner ? makeBuilding(ld.level, owner.color) : saleSign();
     lot.blink = null;
     b.traverse(o => { o.userData.cell = i; if (o.userData.blink) lot.blink = o; });
     if (!owner) b.rotation.y = -lot.holder.rotation.y; // 待售牌始终朝向镜头一侧
