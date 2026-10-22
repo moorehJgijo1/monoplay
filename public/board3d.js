@@ -324,50 +324,89 @@ export function createBoard3D(container, E, opts = {}) {
     scene.add(plate);
     const holder = new THREE.Group();
     holder.position.set(lc.x, 0.14, lc.z);
+    holder.rotation.y = Math.atan2(-dx, -dz); // 正面（+z）朝向马路
     scene.add(holder);
     lots[i] = { holder, center: lc, key: null, building: null };
   });
 
-  function flagOn(g, color, y) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6), std('#666'));
-    pole.position.set(0.55, y + 0.45, 0.55);
-    const flag = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.28, 0.02), std(color));
-    flag.position.set(0.78, y + 0.75, 0.55);
-    g.add(pole, flag);
+  // 各等级的建筑。局部坐标里 +z 是正面（朝马路），屋顶、阳台、雨棚、楼冠用地主的颜色
+  const darkMat = std('#36414f'), doorMat = std('#8b5a2b'), stoneMat = std('#d9d2c3'), metalMat = std('#cfd6dd', { metalness: 0.6, roughness: 0.35 });
+  function gable(w, h, d, mat) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-w / 2, 0);
+    shape.lineTo(w / 2, 0);
+    shape.lineTo(0, h);
+    shape.closePath();
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
+    geo.translate(0, 0, -d / 2); // 三角形山墙朝向正面（马路），屋脊前后走向
+    return new THREE.Mesh(geo, mat);
   }
   function makeBuilding(level, color) {
     const g = new THREE.Group();
-    const roof = std(color), wall = std(LEVEL_COLORS.wall);
-    const add = (geo, mat, y, x = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
+    const roof = std(color, { roughness: 0.55 });
+    const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; };
+    const box = (w, h, d, mat, x, y, z) => add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat), x, y + h / 2, z);
+    const windowsFront = (w, y, z, n) => { for (let k = 0; k < n; k++) box(0.16, 0.18, 0.02, darkMat, -w / 2 + (k + 0.5) * (w / n), y, z); };
     let top = 0;
-    if (level === 1) {
-      add(new THREE.BoxGeometry(1.0, 0.7, 0.9), wall, 0.35);
-      const r = add(new THREE.ConeGeometry(0.85, 0.6, 4), roof, 1.0);
-      r.rotation.y = Math.PI / 4;
-      add(new THREE.BoxGeometry(0.22, 0.4, 0.02), std('#8b5a2b'), 0.2, 0, 0.46);
-      top = 1.3;
+    if (level === 0) {
+      // 小木屋
+      box(0.8, 0.5, 0.7, std('#d9a066'), 0, 0, 0);
+      add(gable(0.92, 0.42, 0.82, roof), 0, 0.5, 0);
+      box(0.2, 0.32, 0.02, doorMat, 0, 0, 0.36);
+      top = 0.92;
+    } else if (level === 1) {
+      // 平房：烟囱、窗户
+      box(1.15, 0.65, 0.9, std('#fbf8f1'), 0, 0, 0);
+      add(gable(1.3, 0.5, 1.02, roof), 0, 0.65, 0);
+      box(0.14, 0.4, 0.14, std('#b5651d'), 0.35, 0.8, -0.15);
+      box(0.22, 0.38, 0.02, doorMat, 0, 0, 0.46);
+      windowsFront(1.15, 0.28, 0.46, 3);
+      top = 1.15;
     } else if (level === 2) {
-      add(new THREE.BoxGeometry(1.1, 1.3, 1.0), texMat(winTex, 2, 2), 0.65);
-      const r = add(new THREE.ConeGeometry(0.95, 0.7, 4), roof, 1.65);
-      r.rotation.y = Math.PI / 4;
-      top = 2.0;
+      // 洋房：两层、阳台
+      box(1.2, 1.3, 1.0, std('#fff3dc'), 0, 0, 0);
+      add(gable(1.38, 0.62, 1.14, roof), 0, 1.3, 0);
+      box(0.9, 0.06, 0.25, roof, 0, 0.68, 0.62);
+      box(0.9, 0.18, 0.03, std('#ffffff'), 0, 0.74, 0.74);
+      box(0.24, 0.42, 0.02, doorMat, 0, 0, 0.51);
+      windowsFront(1.2, 0.28, 0.51, 4);
+      windowsFront(1.2, 0.95, 0.51, 3);
+      top = 1.92;
     } else if (level === 3) {
-      add(new THREE.BoxGeometry(1.15, 2.2, 1.15), texMat(winTex, 2, 4), 1.1);
-      add(new THREE.BoxGeometry(1.25, 0.18, 1.25), roof, 2.29);
-      top = 2.4;
+      // 公寓：平顶、水塔、雨棚
+      box(1.2, 2.2, 1.1, texMat(winTex, 2, 4), 0, 0, 0);
+      box(1.3, 0.14, 1.2, roof, 0, 2.2, 0);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.35, 12), metalMat), -0.3, 2.52, -0.2);
+      box(0.6, 0.06, 0.3, roof, 0, 0.5, 0.68);
+      box(0.3, 0.45, 0.02, darkMat, 0, 0, 0.56);
+      top = 2.75;
     } else if (level === 4) {
-      add(new THREE.BoxGeometry(1.15, 3.3, 1.15), texMat(glassTex, 2, 6), 1.65);
-      add(new THREE.BoxGeometry(1.25, 0.25, 1.25), roof, 1.2);
-      add(new THREE.BoxGeometry(1.25, 0.25, 1.25), roof, 3.35);
-      top = 3.5;
+      // 大厦：裙楼、玻璃塔楼、楼冠、天线
+      box(1.45, 0.55, 1.35, roof, 0, 0, 0);
+      box(1.15, 2.9, 1.1, texMat(glassTex, 2, 6), 0, 0.55, 0);
+      box(1.25, 0.3, 1.2, roof, 0, 3.45, 0);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), metalMat), 0.3, 4.15, 0);
+      box(0.5, 0.35, 0.02, darkMat, 0, 0, 0.68);
+      top = 3.75;
     } else if (level === 5) {
-      add(new THREE.BoxGeometry(1.35, 1.2, 1.35), texMat(winTex, 3, 2), 0.6);
-      add(new THREE.BoxGeometry(1.0, 3.6, 1.0), texMat(glassTex, 2, 7), 3.0);
-      add(new THREE.BoxGeometry(0.7, 0.9, 0.7), roof, 5.25);
-      add(new THREE.CylinderGeometry(0.03, 0.08, 1.3, 6), std('#ddd', { metalness: 0.6 }), 6.35);
-      top = 5.7;
+      // 摩天楼：三段收分、尖顶、航空灯
+      box(1.5, 0.8, 1.45, stoneMat, 0, 0, 0);
+      box(1.5, 0.12, 1.45, roof, 0, 0.8, 0);
+      box(1.15, 2.6, 1.1, texMat(glassTex, 2, 6), 0, 0.92, 0);
+      box(1.22, 0.14, 1.17, roof, 0, 3.52, 0);
+      box(0.85, 1.7, 0.82, texMat(glassTex, 2, 4), 0, 3.66, 0);
+      const crown = add(new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.9, 4), roof), 0, 5.81, 0);
+      crown.rotation.y = Math.PI / 4;
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.06, 1.0, 6), metalMat), 0, 6.75, 0);
+      const light = add(new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff3b3b' })), 0, 7.28, 0);
+      light.userData.blink = true;
+      box(0.6, 0.5, 0.02, darkMat, 0, 0, 0.73);
+      top = 6.3;
     }
-    flagOn(g, color, top);
+    // 小旗子
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.6, 6), std('#666')), 0.62, 0.3, 0.62);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.02), roof), 0.79, 0.5, 0.62);
+    g.userData.top = top;
     return g;
   }
   function saleSign(color) {
@@ -405,7 +444,9 @@ export function createBoard3D(container, E, opts = {}) {
     lot.prev = { level: ld.level, owner: ld.owner };
     lot.holder.clear();
     const b = owner ? makeBuilding(ld.level, owner.color) : saleSign(GROUPS[BOARD[i].group].color);
-    b.traverse(o => { o.userData.cell = i; });
+    lot.blink = null;
+    b.traverse(o => { o.userData.cell = i; if (o.userData.blink) lot.blink = o; });
+    if (!owner) b.rotation.y = -lot.holder.rotation.y; // 待售牌始终朝向镜头一侧
     lot.holder.add(b);
     if (grew) {
       b.scale.set(1, 0.01, 1);
@@ -625,6 +666,7 @@ export function createBoard3D(container, E, opts = {}) {
       if (pc.ring.visible) { const s = 1 + (Math.sin(clock.t * 4) + 1) * 0.12; pc.ring.scale.setScalar(s); }
       if (pc.bubble.visible) pc.bubble.position.y = 2.0 + Math.sin(clock.t * 5) * 0.08;
     });
+    Object.values(lots).forEach(l => { if (l.blink) l.blink.visible = Math.sin(clock.t * 4) > 0; });
     Object.values(markers).forEach(m => { m.sprite.position.y = m.base + Math.sin(clock.t * 2.5 + m.phase) * (m.kind === 'god' ? 0.2 : 0.03); });
     forkArrows.forEach(a => { a.position.y = a.userData.base.y + Math.abs(Math.sin(clock.t * 4)) * 0.35; });
     tiles.forEach((t, i) => {
