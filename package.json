@@ -1,0 +1,13 @@
+{
+  "name": "dafuweng-huanlecheng",
+  "version": "1.0.0",
+  "description": "大富翁·欢乐城：可联机、可单机对战电脑的网页大富翁",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
