@@ -788,10 +788,8 @@ export function createBoard3D(container, E, opts = {}) {
       b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
       const v = toward.clone().multiplyScalar(-(1.5 + Math.random() * 1.5)).addScaledVector(side, -sgn * (0.8 + Math.random() * 1.2));
       b.velocity.set(v.x, -3 - Math.random() * 2, v.z);
-      // 绕一个主轴翻滚，另外两个轴只带一点点晃动，看起来像真实地掷出去
-      const sign = () => (Math.random() < 0.5 ? -1 : 1);
-      const main = Math.floor(Math.random() * 3), w = [0, 0, 0].map((_, a) => sign() * (a === main ? 5 + Math.random() * 4 : Math.random() * 2));
-      b.angularVelocity.set(w[0], w[1], w[2]);
+      const spin = () => (Math.random() < 0.5 ? -1 : 1) * (15 + Math.random() * 15);
+      b.angularVelocity.set(spin(), spin(), spin());
       world.addBody(b);
       return b;
     });
@@ -918,17 +916,23 @@ export function createBoard3D(container, E, opts = {}) {
       scene.add(ring);
       animate(900, t => { ring.scale.setScalar(1 + t * 1.6); ring.material.opacity = 1 - t; if (t >= 1) scene.remove(ring); });
     });
-    const total = textSprite(String(values[0] + values[1]), '#e8452c', '#fff', 1.8);
-    total.position.set(mid.x, mid.y + 1.9, mid.z);
+    // 总点数从当前玩家的头顶冒出来，停在名字牌上方
+    const head = focus !== null && pieces[focus] ? pieces[focus].group.position.clone() : mid.clone();
+    const total = textSprite(String(values[0] + values[1]), '#e8452c', '#fff', 1.6);
+    total.position.set(head.x, head.y + 1.5, head.z);
     scene.add(total);
     if (onReveal) onReveal();
     const s0 = total.scale.clone();
-    await animate(420 / speed, t => total.scale.copy(s0).multiplyScalar(Math.max(0.01, easeOutBack(t))));
+    await animate(480 / speed, t => {
+      const e = easeOutBack(t);
+      total.scale.copy(s0).multiplyScalar(Math.max(0.01, e));
+      total.position.y = head.y + 1.5 + 2.4 * Math.min(1, e);
+    });
     await new Promise(r => setTimeout(r, 650 / speed));
     await animate(300 / speed, t => {
       meshes.forEach(m => m.scale.setScalar(Math.max(0.01, 1 - t)));
       total.material.opacity = 1 - t;
-      total.position.y = mid.y + 1.9 + t;
+      total.position.y = head.y + 3.9 + t;
     });
     meshes.forEach(m => scene.remove(m));
     scene.remove(total);
