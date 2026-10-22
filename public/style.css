@@ -397,3 +397,64 @@ input, select {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ---------- 游戏画面底部的操作区（手牌 + 掷骰子 / 对话框） ---------- */
+.hud-left { display: flex; flex-direction: column; gap: 1cqmin; align-items: flex-start; min-width: 0; }
+.hud .hud-log { margin: 0; max-width: min(46cqw, 420px); }
+.dock {
+  position: absolute; left: 50%; bottom: 2.2cqmin; transform: translateX(-50%); z-index: 3;
+  display: flex; align-items: flex-end; justify-content: center; gap: 1.6cqmin; width: max-content; max-width: 96%;
+  pointer-events: none;
+}
+.dock > * { pointer-events: auto; }
+.dock .action-panel { min-height: 0; border: none; box-shadow: none; background: none; padding: 0; animation: none; }
+.dock .action-panel.waiting {
+  display: flex; align-items: center; gap: 10px; background: rgba(30, 40, 60, .62); color: #fff; padding: 6px 16px 6px 6px;
+  border-radius: 30px; font-weight: 700; font-size: .92rem; box-shadow: 0 4px 14px rgba(0,0,0,.25); white-space: nowrap;
+}
+.pill-av, .dlg-av {
+  display: grid; place-items: center; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--pc) 40%, #fff), var(--pc)); border: 3px solid #fff;
+}
+.pill-av { width: 34px; height: 34px; font-size: 1.2rem; }
+.dock .action-panel.dialog {
+  display: flex; gap: 14px; align-items: flex-start; max-width: min(620px, 92cqw);
+  background: rgba(255, 253, 246, .96); border: 4px solid var(--gold); border-radius: 22px; padding: 14px 18px 14px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.3); animation: dlgin .3s cubic-bezier(.2, 1.4, .4, 1);
+}
+@keyframes dlgin { from { transform: translateY(30px) scale(.9); opacity: 0; } }
+.dlg-av { width: 64px; height: 64px; font-size: 2.3rem; box-shadow: 0 0 0 3px var(--pc), 0 4px 10px rgba(0,0,0,.2); }
+.dlg-body { min-width: 0; }
+.dlg-body h3 { margin: 0 0 4px; font-size: 1.12rem; }
+.dlg-body p { margin: 2px 0 6px; font-size: .9rem; }
+.dlg-body .row { margin: 8px 0 0; }
+.dlg-body .fork-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.roll-mode { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.roll-notes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.roll-notes span { background: rgba(30, 40, 60, .62); color: #fff; font-size: .82rem; font-weight: 700; padding: 3px 10px; border-radius: 14px; }
+.roll-btn {
+  width: 112px; height: 112px; border-radius: 50%; border: 5px solid #fff; cursor: pointer; color: #fff;
+  background: radial-gradient(circle at 35% 28%, #ff8a6b, var(--accent) 55%, var(--accent-dark));
+  box-shadow: 0 0 0 5px var(--gold), 0 10px 24px rgba(180, 45, 23, .55), inset 0 -6px 12px rgba(0,0,0,.2);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  animation: rollpulse 1.4s ease-in-out infinite; transition: transform .12s;
+}
+.roll-btn:hover { transform: scale(1.06); }
+.roll-btn:active { transform: scale(.94); }
+.roll-btn .die-ic { font-size: 2.6rem; line-height: 1; animation: diewiggle 1.4s ease-in-out infinite; }
+.roll-btn b { font-size: 1.05rem; letter-spacing: 2px; text-shadow: 0 2px 2px rgba(0,0,0,.3); }
+@keyframes rollpulse { 50% { box-shadow: 0 0 0 5px var(--gold), 0 0 0 14px rgba(247, 181, 0, .25), 0 10px 24px rgba(180, 45, 23, .55), inset 0 -6px 12px rgba(0,0,0,.2); } }
+@keyframes diewiggle { 0%, 70%, 100% { transform: rotate(0); } 80% { transform: rotate(-14deg); } 90% { transform: rotate(12deg); } }
+.dock .hand { display: flex; gap: 6px; align-items: flex-end; background: rgba(30, 40, 60, .45); padding: 8px; border-radius: 16px; max-width: 46cqw; overflow-x: auto; }
+.dock .hand.hidden { display: none; }
+.dock .card-chip { width: 58px; height: 78px; flex: none; font-size: .68rem; }
+.dock .card-chip.usable:hover { transform: translateY(-8px) rotate(-3deg); }
+@media (max-width: 600px) {
+  .dock { bottom: 8px; gap: 6px; }
+  .roll-btn { width: 84px; height: 84px; }
+  .roll-btn .die-ic { font-size: 2rem; }
+  .dock .card-chip { width: 48px; height: 64px; }
+  .dlg-av { width: 44px; height: 44px; font-size: 1.6rem; }
+  .dock .action-panel.dialog { padding: 10px; gap: 8px; }
+}
+@container (max-width: 520px) { .dock .hand { max-width: 40cqw; } }

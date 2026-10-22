@@ -103,6 +103,7 @@
       <div id="board3d" class="board3d"></div>
       <div class="hud">
         <div class="hud-top">
+          <div class="hud-left">
           <div class="now-playing">
             <div id="nowAvatar" class="now-avatar"></div>
             <div class="now-info">
@@ -110,13 +111,19 @@
               <div id="nowSub" class="now-sub"></div>
             </div>
           </div>
+          <div id="centerLog" class="hud-log"></div>
+          </div>
           <div class="hud-right">
             <div id="roundInfo" class="round-info"></div>
             <button class="btn small" id="viewBtn">🗺️ 全景</button>
           </div>
         </div>
-        <div id="centerLog" class="hud-log"></div>
         <div id="dice" class="dice hud-dice"></div>
+      </div>
+      <!-- 游戏画面底部的操作区：手牌 + 掷骰子按钮 / 决定对话框（参考《大富翁 11》，操作都在画面里） -->
+      <div class="dock" id="dock">
+        <div id="handPanel" class="hand"></div>
+        <div id="actionPanel" class="action-panel"></div>
       </div>
       <div id="floaters" class="floaters"></div>
       <div id="diceStage" class="dice-stage hidden"></div>
@@ -132,8 +139,6 @@
         <button class="btn small" id="soundBtn">🔊</button>
         <button class="btn small" id="autoBtn">🤖 托管</button>
       </div>
-      <div id="actionPanel" class="panel action-panel"></div>
-      <div id="handPanel" class="panel hand"></div>
       <div id="playersPanel" class="players"></div>
       <div class="panel log-panel">
         <div class="log-tabs"><button class="tab active" data-log="log">📜 记录</button><button class="tab" data-log="chat" id="chatTab">💬 聊天</button></div>

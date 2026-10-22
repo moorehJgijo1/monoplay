@@ -837,38 +837,33 @@ import { sfx, setSoundEnabled } from './sound.js';
   }
 
   function renderActions(s) {
+    // 操作区在游戏画面底部：轮到自己时是掷骰子按钮或带头像的对话框，别人的回合只显示一个小提示
     const el = $('#actionPanel');
     const me = viewer(s), cur = s.players[s.current];
-    el.classList.remove('mine');
+    const pill = (p, text) => { el.className = 'action-panel waiting'; el.innerHTML = `<span class="pill-av" style="--pc:${p.color}">${CHARACTERS[p.char].emoji}</span><span>${text}</span>`; };
     if (s.phase === 'over' && !view.animating) {
-      el.innerHTML = `<h3>🏆 游戏结束</h3><p>${esc(s.players[s.winner].name)} 成为了大富翁！</p>
-        <div class="row"><button class="btn primary" data-act="ranking">查看排名</button></div>`;
+      el.className = 'action-panel dialog';
+      el.innerHTML = `<div class="dlg-av" style="--pc:${s.players[s.winner].color}">🏆</div><div class="dlg-body"><h3>游戏结束</h3><p>${esc(s.players[s.winner].name)} 成为了大富翁！</p>
+        <div class="row"><button class="btn primary" data-act="ranking">查看排名</button></div></div>`;
       return;
     }
-    if (me >= 0 && s.players[me].bankrupt) {
-      el.innerHTML = `<h3>😵 你已破产</h3><p>可以继续观战，或者从菜单回到主页。</p>`;
-      return;
-    }
+    if (me >= 0 && s.players[me].bankrupt) return pill(s.players[me], '你已破产，正在观战');
     if (!canAct(s)) {
       const who = view.shown ? view.shown.players[view.shown.current] : cur;
-      const waiting = me >= 0 && s.players[me].auto ? '托管中，电脑会替你行动。'
-        : view.animating ? `<span class="wait-dots">${esc(who.name)} 行动中</span>`
-          : `<span class="wait-dots">等待 ${esc(cur.name)} ${PHASE_TEXT[s.phase] || '行动'}${cur.isBot ? '（电脑思考中）' : ''}</span>`;
-      el.innerHTML = `<h3>${CHARACTERS[who.char].emoji} ${esc(who.name)} 的回合</h3><p>${waiting}</p>`;
-      return;
+      if (me >= 0 && s.players[me].auto) return pill(s.players[me], '托管中，电脑会替你行动');
+      return pill(view.animating ? who : cur, `<span class="wait-dots">${esc((view.animating ? who : cur).name)} ${view.animating ? '行动中' : PHASE_TEXT[s.phase] || '行动中'}</span>`);
     }
-    el.classList.add('mine');
     const p = s.players[me], cell = BOARD[p.pos];
     let html = '';
     switch (s.phase) {
       case 'roll': {
         const notes = [];
-        if (s.forcedDice) notes.push(`🎯 遥控骰子：${s.forcedDice} 点`);
-        if (p.turtle) notes.push(`🐢 乌龟状态，只能走 1 步（剩 ${p.turtle} 次）`);
-        if (p.cards.length) notes.push('掷骰前可以先使用下方的道具卡');
-        html = `<h3>🎲 轮到你了！</h3><p>${notes.join('<br>')}</p>
-          <div class="row"><button class="btn primary huge" data-act="roll">🎲 掷骰子</button></div>`;
-        break;
+        if (s.forcedDice) notes.push(`🎯 遥控骰子 ${s.forcedDice} 点`);
+        if (p.turtle) notes.push(`🐢 只能走 1 步（剩 ${p.turtle} 次）`);
+        el.className = 'action-panel roll-mode';
+        el.innerHTML = `${notes.length ? `<div class="roll-notes">${notes.map(n => `<span>${n}</span>`).join('')}</div>` : ''}
+          <button class="roll-btn" data-act="roll"><span class="die-ic">🎲</span><b>掷骰子</b></button>`;
+        return;
       }
       case 'buy': {
         const price = E.buyPrice(s, me, p.pos);
@@ -910,7 +905,8 @@ import { sfx, setSoundEnabled } from './sound.js';
       default:
         html = `<p>……</p>`;
     }
-    el.innerHTML = html;
+    el.className = 'action-panel dialog';
+    el.innerHTML = `<div class="dlg-av" style="--pc:${p.color}">${CHARACTERS[p.char].emoji}</div><div class="dlg-body">${html}</div>`;
   }
 
   // 鼠标移到带落点的选项上时，地图上标出这些格子
@@ -967,16 +963,16 @@ import { sfx, setSoundEnabled } from './sound.js';
 
   // ---------- 道具卡 ----------
   function renderHand(s) {
+    // 手牌只在轮到自己掷骰前出现在画面底部（这时才能用），像大富翁 11 的道具栏
     const el = $('#handPanel'), me = viewer(s);
-    if (me < 0 || s.players[me].bankrupt || s.phase === 'over') { el.classList.add('hidden'); return; }
+    const usable = me >= 0 && canAct(s) && s.phase === 'roll';
+    if (!usable || !s.players[me].cards.length) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
     const p = s.players[me];
-    const usable = canAct(s) && s.phase === 'roll';
-    el.innerHTML = `<div class="hand-title"><span>🃏 我的道具卡（${p.cards.length}/${E.MAX_CARDS}）</span><span>🎟️ ${p.points} 点券</span></div>
-      <div class="hand-cards">${p.cards.map((k, idx) => {
-        const c = CARDS[k], ok = usable && E.cardTargets(s, me, k);
-        return `<button class="card-chip ${ok ? 'usable' : ''} ${c.target === 'passive' ? 'passive' : ''}" data-card="${idx}" title="${esc(c.desc)}"><span class="em">${c.emoji}</span>${c.name}</button>`;
-      }).join('') || '<span class="hint">还没有道具卡，去道具店看看吧</span>'}</div>`;
+    el.innerHTML = p.cards.map((k, idx) => {
+      const c = CARDS[k], ok = E.cardTargets(s, me, k);
+      return `<button class="card-chip ${ok ? 'usable' : ''} ${c.target === 'passive' ? 'passive' : ''}" data-card="${idx}" title="${esc(c.desc)}"><span class="em">${c.emoji}</span>${c.name}</button>`;
+    }).join('');
   }
 
   $('#handPanel').onclick = e => {
