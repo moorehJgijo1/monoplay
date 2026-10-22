@@ -8,38 +8,77 @@
   'use strict';
 
   // ---------- 地图 ----------
-  const GROUPS = {
-    brown:     { name: '西北', color: '#a0522d' },
-    lightblue: { name: '西南', color: '#4fb3e8' },
-    pink:      { name: '华中', color: '#d64d9b' },
-    orange:    { name: '中原', color: '#f39c12' },
-    red:       { name: '巴蜀', color: '#e53935' },
-    yellow:    { name: '江淮', color: '#e1b12c' },
-    green:     { name: '岭南', color: '#27ae60' },
-    darkblue:  { name: '京沪', color: '#3949ab' },
-  };
-  const L = (name, group, price) => ({ type: 'land', name, group, price });
-  const BOARD = [
-    { type: 'start', name: '起点' },
-    L('拉萨', 'brown', 600), L('西宁', 'brown', 600), { type: 'destiny', name: '命运' }, L('兰州', 'brown', 800),
-    { type: 'shop', name: '道具店' }, L('昆明', 'lightblue', 1000), L('贵阳', 'lightblue', 1000), { type: 'chance', name: '机会' }, L('南宁', 'lightblue', 1200),
-    { type: 'jail', name: '监狱' }, L('长沙', 'pink', 1400), { type: 'wheel', name: '幸运转盘' }, L('南昌', 'pink', 1400), L('福州', 'pink', 1600),
-    { type: 'points', name: '点券站' }, L('合肥', 'orange', 1800), { type: 'news', name: '新闻' }, L('郑州', 'orange', 1800), L('武汉', 'orange', 2000),
-    { type: 'hospital', name: '医院' }, L('西安', 'red', 2200), { type: 'chance', name: '机会' }, L('成都', 'red', 2200), L('重庆', 'red', 2400),
-    { type: 'shop', name: '道具店' }, L('天津', 'yellow', 2600), L('南京', 'yellow', 2600), { type: 'casino', name: '赌场' }, L('苏州', 'yellow', 2800),
-    { type: 'police', name: '警察局' }, L('杭州', 'green', 3000), L('广州', 'green', 3000), { type: 'destiny', name: '命运' }, L('深圳', 'green', 3200),
-    { type: 'points', name: '点券站' }, { type: 'news', name: '新闻' }, L('上海', 'darkblue', 3500), { type: 'tax', name: '税务局' }, L('北京', 'darkblue', 4000),
+  // 城市路网：每个字符是一个路口/格子，相邻的格子之间有路。外圈环路 + 中央大道 + 南北大街，共 5 个岔路口。
+  // 大写/符号：S 起点 J 监狱 H 医院 P 警察局 ? 机会 D 命运 N 新闻 $ 道具店 W 幸运转盘 C 赌场 X 税务局 T 点券站 K 中央公园
+  // 小写字母：地产片区
+  const MAP = [
+    'Saa?a$TbbDbbJ',
+    'c.....d.....e',
+    'c.....d.....e',
+    'D.....d.....?',
+    'NffWfCKggXggN',
+    '?.....i.....j',
+    'k.....i.....j',
+    'k.....?.....j',
+    'PhhDh$Tll?llH',
   ];
+  const GROUPS = {
+    a: { name: '西北', color: '#b0703c', price: 600, cities: ['拉萨', '西宁', '兰州'] },
+    b: { name: '西南', color: '#4fb3e8', price: 900, cities: ['昆明', '贵阳', '南宁', '海口'] },
+    e: { name: '两湖', color: '#d64d9b', price: 1200, cities: ['长沙', '武汉'] },
+    j: { name: '中原', color: '#f39c12', price: 1500, cities: ['郑州', '太原', '西安'] },
+    l: { name: '齐鲁', color: '#e53935', price: 1800, cities: ['大连', '天津', '青岛', '济南'] },
+    h: { name: '东北', color: '#8e6cdf', price: 2100, cities: ['哈尔滨', '长春', '沈阳'] },
+    k: { name: '闽赣', color: '#1abc9c', price: 2400, cities: ['福州', '南昌'] },
+    c: { name: '江淮', color: '#e1b12c', price: 2700, cities: ['南京', '合肥'] },
+    d: { name: '巴蜀', color: '#c0392b', price: 3000, cities: ['重庆', '成都', '绵阳'] },
+    f: { name: '吴越', color: '#16a085', price: 3300, cities: ['苏州', '无锡', '杭州'] },
+    g: { name: '岭南', color: '#27ae60', price: 3600, cities: ['厦门', '广州', '深圳', '香港'] },
+    i: { name: '京沪', color: '#3949ab', price: 4000, cities: ['上海', '北京'] },
+  };
+  const SYMBOLS = {
+    S: ['start', '起点'], J: ['jail', '监狱'], H: ['hospital', '医院'], P: ['police', '警察局'], '?': ['chance', '机会'],
+    D: ['destiny', '命运'], N: ['news', '新闻'], $: ['shop', '道具店'], W: ['wheel', '幸运转盘'], C: ['casino', '赌场'],
+    X: ['tax', '税务局'], T: ['points', '点券站'], K: ['park', '中央公园'],
+  };
+  const MAP_W = MAP[0].length, MAP_H = MAP.length;
+  const BOARD = [];
+  const AT = {};
+  MAP.forEach((row, z) => [...row].forEach((ch, x) => {
+    if (ch === '.') return;
+    const node = SYMBOLS[ch] ? { type: SYMBOLS[ch][0], name: SYMBOLS[ch][1] } : { type: 'land', group: ch };
+    node.x = x;
+    node.z = z;
+    AT[x + ',' + z] = BOARD.length;
+    BOARD.push(node);
+  }));
+  const ADJ = BOARD.map(c => [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => AT[(c.x + dx) + ',' + (c.z + dz)]).filter(n => n !== undefined));
   const N = BOARD.length;
-  const JAIL = 10, HOSPITAL = 20;
   const LANDS = BOARD.map((c, i) => (c.type === 'land' ? i : -1)).filter(i => i >= 0);
   const GROUP_CELLS = {};
   LANDS.forEach(i => (GROUP_CELLS[BOARD[i].group] = GROUP_CELLS[BOARD[i].group] || []).push(i));
-  const CORNERS = [0, JAIL, HOSPITAL, 30];
+  Object.entries(GROUP_CELLS).forEach(([g, cells]) => cells.forEach((c, k) => {
+    BOARD[c].name = GROUPS[g].cities[k];
+    BOARD[c].price = GROUPS[g].price + (k === cells.length - 1 && cells.length >= 3 ? 200 : 0);
+  }));
+  const indexOfType = t => BOARD.findIndex(c => c.type === t);
+  const START = indexOfType('start'), JAIL = indexOfType('jail'), HOSPITAL = indexOfType('hospital');
+  // 开局朝右走：把“来的方向”设成起点下方的格子
+  const START_PREV = ADJ[START].find(n => BOARD[n].z > BOARD[START].z);
+  const NO_GOD_TYPES = ['start', 'jail', 'hospital', 'police'];
+  // 任意两格之间的最短步数
+  const DIST = BOARD.map((_, a) => {
+    const d = Array(N).fill(Infinity);
+    d[a] = 0;
+    const q = [a];
+    while (q.length) { const u = q.shift(); ADJ[u].forEach(v => { if (d[v] === Infinity) { d[v] = d[u] + 1; q.push(v); } }); }
+    return d;
+  });
+  const dist = (a, b) => DIST[a][b];
 
   const LEVELS = ['空地', '平房', '洋房', '公寓', '大厦', '摩天楼'];
   const LEVEL_EMOJI = ['', '🏠', '🏡', '🏢', '🏬', '🏙️'];
-  const LEVEL_MULT = [1, 4, 10, 22, 36, 52];
+  const LEVEL_MULT = [1, 5, 14, 30, 48, 70];
   const MAX_LEVEL = 5;
   const MAX_CARDS = 8;
 
@@ -69,9 +108,9 @@
   // ---------- 道具卡 ----------
   const CARDS = {
     remote:    { name: '遥控骰子', emoji: '🎯', price: 30, target: 'dice', desc: '指定本回合掷出的点数（2–12）' },
-    roadblock: { name: '路障', emoji: '🚧', price: 20, target: 'cell', desc: '在前后 8 格内放路障，经过的人会被拦下' },
-    mine:      { name: '地雷', emoji: '💣', price: 40, target: 'cell', desc: '在前后 8 格内埋地雷，踩中的人住院 3 天' },
-    robot:     { name: '机器娃娃', emoji: '🤖', price: 20, target: 'none', desc: '清除前方 10 格内的路障和地雷' },
+    roadblock: { name: '路障', emoji: '🚧', price: 20, target: 'cell', desc: '在周围 8 格内放路障，经过的人会被拦下' },
+    mine:      { name: '地雷', emoji: '💣', price: 40, target: 'cell', desc: '在周围 8 格内埋地雷，踩中的人住院 3 天' },
+    robot:     { name: '机器娃娃', emoji: '🤖', price: 20, target: 'none', desc: '清除周围 10 格内的路障和地雷' },
     turn:      { name: '转向卡', emoji: '🔄', price: 20, target: 'player', self: true, desc: '让一位玩家（可以是自己）掉头走' },
     stay:      { name: '停留卡', emoji: '⏸️', price: 30, target: 'none', desc: '本回合原地不动，再次触发脚下格子' },
     turtle:    { name: '乌龟卡', emoji: '🐢', price: 30, target: 'player', self: true, desc: '目标接下来 3 回合每次只走 1 步' },
@@ -145,7 +184,7 @@
       }
       s.players.push({
         id: p.id, name: p.name, char: ch, isBot: !!p.isBot, auto: false, color: '',
-        cash, points: 60, pos: 0, dir: 1, cards: [], god: null,
+        cash, points: 60, pos: START, prev: START_PREV, cards: [], god: null,
         stay: 0, stayAt: null, turtle: 0, bankrupt: false,
       });
     });
@@ -171,7 +210,6 @@
   const round10 = n => Math.round(n / 10) * 10;
   const pn = (s, i) => s.players[i].name;
   const alive = s => s.players.map((_, i) => i).filter(i => !s.players[i].bankrupt);
-  const ringDist = (a, b) => { const d = Math.abs(a - b) % N; return Math.min(d, N - d); };
 
   function log(s, text) {
     s.log.push({ n: ++s.seq, text });
@@ -189,7 +227,7 @@
   }
 
   // ---------- 地产 ----------
-  function upgradeCost(cell) { return round10(BOARD[cell].price * 0.4); }
+  function upgradeCost(cell) { return round10(BOARD[cell].price * 0.3); }
   function landValue(s, cell) { return BOARD[cell].price + s.lands[cell].level * upgradeCost(cell); }
   function buyPrice(s, i, cell) { return s.players[i].char === 'atubo' ? round10(BOARD[cell].price * 0.8) : BOARD[cell].price; }
   function cardPrice(s, i, key) { return s.players[i].char === 'xiaomei' ? Math.ceil(CARDS[key].price * 0.7) : CARDS[key].price; }
@@ -200,7 +238,7 @@
     if (ld.owner === null) return 0;
     const c = BOARD[cell];
     const chain = GROUP_CELLS[c.group].filter(x => x !== cell && s.lands[x].owner === ld.owner).length;
-    let r = (c.price / 10) * LEVEL_MULT[ld.level] * (1 + 0.5 * chain);
+    let r = (c.price / 10) * LEVEL_MULT[ld.level] * (1 + 0.6 * chain);
     if (s.players[ld.owner].char === 'qian') r *= 1.25;
     return round10(r);
   }
@@ -263,6 +301,7 @@
   function sendTo(s, i, where, days, why) {
     const p = s.players[i];
     p.pos = where === 'jail' ? JAIL : HOSPITAL;
+    p.prev = null;
     p.stay = days;
     p.stayAt = where;
     recordMove(s, i, [p.pos], true);
@@ -283,7 +322,7 @@
     const busy = new Set([...Object.keys(s.gods), ...Object.keys(s.obstacles)].map(Number));
     s.players.forEach(p => busy.add(p.pos));
     const cells = [];
-    for (let c = 0; c < N; c++) if (!CORNERS.includes(c) && !busy.has(c)) cells.push(c);
+    for (let c = 0; c < N; c++) if (!NO_GOD_TYPES.includes(BOARD[c].type) && !busy.has(c)) cells.push(c);
     if (!cells.length) return;
     const cell = pick(s, cells), key = pick(s, GOD_KEYS);
     s.gods[cell] = key;
@@ -299,15 +338,42 @@
   const randomCard = s => pick(s, CARD_KEYS);
 
   // ---------- 移动 ----------
-  // 逐格行走：经过起点领工资、经过神仙被附身、遇路障停下、踩地雷住院。返回 false 表示走路途中被送进医院。
-  function walk(s, i, steps, dir) {
+  // 往前能走的路口：不走回头路；走到死胡同才掉头
+  function forwardOptions(s, i) {
+    const p = s.players[i], adj = ADJ[p.pos];
+    const f = adj.filter(n => n !== p.prev);
+    return f.length ? f : adj.slice();
+  }
+  function reverse(s, i) {
     const p = s.players[i];
-    dir = dir || p.dir;
+    if (p.prev === null) return;
+    const back = p.prev;
+    p.prev = ADJ[p.pos].find(n => n !== back) ?? null;
+  }
+
+  // 逐格行走：经过起点领工资、经过神仙被附身、遇路障停下、踩地雷住院。
+  // 走到岔路口时暂停（phase = 'fork'），等玩家选方向后用 first 继续。
+  // 返回 'done' 走完、'fork' 等待选路、'hurt' 途中被送进医院
+  function walk(s, i, steps, first) {
+    const p = s.players[i];
     const path = [];
-    for (let k = 1; k <= steps; k++) {
-      p.pos = (p.pos + dir + N) % N;
+    for (let k = 0; k < steps; k++) {
+      let next;
+      if (k === 0 && first !== undefined) next = first;
+      else {
+        const opts = forwardOptions(s, i);
+        if (opts.length > 1) {
+          recordMove(s, i, path);
+          s.fork = { player: i, left: steps - k, options: opts };
+          s.phase = 'fork';
+          return 'fork';
+        }
+        next = opts[0];
+      }
+      p.prev = p.pos;
+      p.pos = next;
       path.push(p.pos);
-      if (p.pos === 0) {
+      if (p.pos === START) {
         const sal = p.char === 'beibei' ? 3000 : s.salary;
         p.cash += sal;
         p.points += 10;
@@ -326,7 +392,7 @@
           recordMove(s, i, path);
           fx(s, '💥', '轰！', `${p.name} 踩中了地雷`, 'bad', i);
           sendTo(s, i, 'hospital', 3, '踩中地雷');
-          return false;
+          return 'hurt';
         } else {
           delete s.obstacles[p.pos];
           log(s, `🚧 ${p.name} 被路障拦了下来`);
@@ -335,13 +401,20 @@
       }
     }
     recordMove(s, i, path);
-    return true;
+    return 'done';
   }
 
+  // 瞬移后下一步可以自选方向
   function teleport(s, i, cell) {
     const p = s.players[i];
     p.pos = cell;
+    p.prev = null;
     recordMove(s, i, [cell], true);
+  }
+
+  function nearestOfType(s, i, type) {
+    const from = s.players[i].pos;
+    return BOARD.map((c, k) => k).filter(k => BOARD[k].type === type).sort((a, b) => DIST[from][a] - DIST[from][b])[0];
   }
 
   // ---------- 落地结算 ----------
@@ -380,6 +453,10 @@
       }
       case 'police':
         sendTo(s, i, 'jail', 2, '被警察带走');
+        return;
+      case 'park':
+        p.points += 20;
+        log(s, `🌳 ${p.name} 在中央公园散步，心情大好，获得 20 点券`);
         return;
       default:
         log(s, `${p.name} 来到「${c.name}」`);
@@ -445,22 +522,13 @@
   }
 
   // ---------- 机会 / 命运 / 新闻 / 转盘 ----------
-  function nearestAhead(s, i, type) {
-    const p = s.players[i];
-    for (let k = 1; k <= N; k++) {
-      const c = (p.pos + p.dir * k + N) % N;
-      if (BOARD[c].type === type) return k;
-    }
-    return 0;
-  }
-
   const CHANCE = [
-    { text: '搭上顺风车，再前进 3 格', run: (s, i) => { if (walk(s, i, 3)) land(s, i); } },
-    { text: '被狗追，向后跑 3 格', run: (s, i) => { if (walk(s, i, 3, -s.players[i].dir)) land(s, i); } },
-    { text: '迷路了，从此掉头走', run: (s, i) => { s.players[i].dir *= -1; } },
-    { text: '前往最近的道具店', run: (s, i) => { if (walk(s, i, nearestAhead(s, i, 'shop'))) land(s, i); } },
-    { text: '前往赌场碰碰运气', run: (s, i) => { if (walk(s, i, nearestAhead(s, i, 'casino'))) land(s, i); } },
-    { text: '乘坐时光机回到起点，领取工资', run: (s, i) => { teleport(s, i, 0); const p = s.players[i]; p.cash += p.char === 'beibei' ? 3000 : s.salary; } },
+    { text: '搭上顺风车，再前进 3 格', run: (s, i) => { if (walk(s, i, 3) === 'done') land(s, i); } },
+    { text: '被狗追，掉头跑 3 格', run: (s, i) => { reverse(s, i); if (walk(s, i, 3) === 'done') land(s, i); } },
+    { text: '迷路了，从此掉头走', run: (s, i) => { reverse(s, i); } },
+    { text: '打车去最近的道具店', run: (s, i) => { teleport(s, i, nearestOfType(s, i, 'shop')); land(s, i); } },
+    { text: '打车去赌场碰碰运气', run: (s, i) => { teleport(s, i, nearestOfType(s, i, 'casino')); land(s, i); } },
+    { text: '乘坐时光机回到起点，领取工资', run: (s, i) => { teleport(s, i, START); const p = s.players[i]; p.prev = START_PREV; p.cash += p.char === 'beibei' ? 3000 : s.salary; } },
     { text: '被外星人绑架，随机传送', run: (s, i) => { teleport(s, i, randInt(s, 0, N - 1)); land(s, i); } },
     { text: '获得 2 张随机道具卡', run: (s, i) => { giveCard(s, i, randomCard(s)); giveCard(s, i, randomCard(s)); } },
     { text: '获得 1 张随机道具卡', run: (s, i) => { giveCard(s, i, randomCard(s)); } },
@@ -586,7 +654,7 @@
       case 'remote': t = s.players[i].turtle > 0 ? [] : [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; if (!t.length) return null; return t;
       case 'roadblock': case 'mine': {
         t = [];
-        for (let c = 0; c < N; c++) if (c !== p.pos && ringDist(c, p.pos) <= 8 && !s.obstacles[c]) t.push(c);
+        for (let c = 0; c < N; c++) if (c !== p.pos && DIST[p.pos][c] <= 8 && !s.obstacles[c]) t.push(c);
         return t;
       }
       case 'robot': return [];
@@ -626,11 +694,11 @@
       case 'mine': s.obstacles[target] = 'mine'; log(s, `💣 ${p.name} 偷偷埋下了地雷`); fx(s, '💣', '地雷', `${p.name} 偷偷埋了一颗地雷……`, 'info', i); break;
       case 'robot': {
         let n = 0;
-        for (let k = 1; k <= 10; k++) { const c = (p.pos + p.dir * k + N) % N; if (s.obstacles[c]) { delete s.obstacles[c]; n++; } }
+        for (const c of Object.keys(s.obstacles).map(Number)) if (DIST[p.pos][c] <= 10) { delete s.obstacles[c]; n++; }
         say(n ? `清除了 ${n} 个障碍` : '前方一片坦途');
         break;
       }
-      case 'turn': tp.dir *= -1; say(`${tp.name} 掉头了`); break;
+      case 'turn': reverse(s, tj); say(`${tp.name} 掉头了`); break;
       case 'turtle': tp.turtle = 3; say(`${tp.name} 变成了乌龟`, 'bad'); break;
       case 'average': {
         const al = alive(s), avg = round10(al.reduce((a, j) => a + s.players[j].cash, 0) / al.length);
@@ -693,7 +761,8 @@
   }
 
   // ---------- 回合流转 ----------
-  const WAIT_PHASES = ['buy', 'upgrade', 'shop', 'casino'];
+  const DECISION_PHASES = ['buy', 'upgrade', 'shop', 'casino'];
+  const WAIT_PHASES = [...DECISION_PHASES, 'fork'];
 
   function settle(s) {
     if (s.phase === 'over') return;
@@ -740,6 +809,7 @@
     s.turn++;
     s.phase = 'roll';
     s.forcedDice = null;
+    s.fork = null;
     s.cardsUsed = 0;
     const p = s.players[n];
     log(s, `—— 轮到 ${p.name} ——`);
@@ -805,7 +875,7 @@
         if (p.turtle > 0) { p.turtle--; steps = 1; }
         log(s, `🎲 ${p.name} 掷出 ${d[0]} + ${d[1]} = ${d[0] + d[1]}${steps === 1 && d[0] + d[1] !== 1 ? '，但像乌龟一样只走 1 步 🐢' : ''}`);
         s.phase = 'moving';
-        if (walk(s, i, steps)) land(s, i);
+        if (walk(s, i, steps) === 'done') land(s, i);
         settle(s);
         return { ok: true };
       }
@@ -873,8 +943,18 @@
         settle(s);
         return { ok: true };
       }
+      case 'chooseFork': {
+        if (s.phase !== 'fork' || !s.fork) return { error: '现在不用选路' };
+        const to = Number(a.to), f = s.fork;
+        if (!f.options.includes(to)) return { error: '不能往那边走' };
+        s.fork = null;
+        s.phase = 'moving';
+        if (walk(s, i, f.left, to) === 'done') land(s, i);
+        settle(s);
+        return { ok: true };
+      }
       case 'skip': {
-        if (!WAIT_PHASES.includes(s.phase)) return { error: '现在不能这样做' };
+        if (!DECISION_PHASES.includes(s.phase)) return { error: '现在不能这样做' };
         if (s.phase === 'buy') log(s, `${p.name} 没有买 ${BOARD[p.pos].name}`);
         s.phase = 'done';
         settle(s);
@@ -913,6 +993,7 @@
     BOARD, N, GROUPS, GROUP_CELLS, LANDS, LEVELS, LEVEL_EMOJI, LEVEL_MULT, MAX_LEVEL, MAX_CARDS, JAIL, HOSPITAL,
     CHARACTERS, CHAR_KEYS, GODS, CARDS, CARD_KEYS, PLAYER_COLORS,
     createGame, applyAction, pendingActor, cardTargets,
-    rentFor, netWorth, ownedBy, landValue, upgradeCost, buyPrice, cardPrice, money, ringDist,
+    rentFor, netWorth, ownedBy, landValue, upgradeCost, buyPrice, cardPrice, money, dist, forwardOptions,
+    MAP_W, MAP_H, ADJ, START,
   };
 });

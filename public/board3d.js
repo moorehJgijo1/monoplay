@@ -1,0 +1,712 @@
+// 3D 棋盘：用 Three.js 渲染城市路网、地产楼房、棋子与特效。
+// 只负责“画”，不含任何规则；由 app.js 把要展示的状态和动画指令交给它。
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/OrbitControls.js';
+
+const U = 2; // 相邻路口的间距
+const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
+const TYPE_STYLE = {
+  start: ['#ffd34d', '🏁'], chance: ['#ffb340', '❓'], destiny: ['#b388ff', '🔮'], news: ['#74b9ff', '📰'],
+  shop: ['#55efc4', '🏪'], wheel: ['#fd79a8', '🎡'], casino: ['#ff7675', '🎰'], points: ['#ffeaa7', '🎟️'],
+  tax: ['#b2bec3', '🧾'], police: ['#7f9cf5', '👮'], jail: ['#a4a4a4', '🚔'], hospital: ['#ffffff', '🏥'], park: ['#7bed9f', '🌳'],
+};
+const LEVEL_COLORS = { glass: '#8fd0ff', wall: '#fbf8f1' };
+
+function easeOutBack(t) { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
+function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return { canvas: c, ctx: c.getContext('2d'), tex };
+}
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, ...extra });
+
+const emojiCache = new Map();
+function emojiTexture(emoji) {
+  if (emojiCache.has(emoji)) return emojiCache.get(emoji);
+  const { ctx, tex } = makeCanvas(128, 128);
+  ctx.font = `96px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, 64, 72);
+  emojiCache.set(emoji, tex);
+  return tex;
+}
+function emojiSprite(emoji, size = 1, onTop = false) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: emojiTexture(emoji), depthTest: !onTop, transparent: true }));
+  s.scale.set(size, size, 1);
+  if (onTop) s.renderOrder = 10;
+  return s;
+}
+function textSprite(text, bg, fg = '#fff', height = 0.55) {
+  const { canvas, ctx, tex } = makeCanvas(512, 128);
+  ctx.font = `bold 64px ${FONT}`;
+  const w = Math.min(500, ctx.measureText(text).width + 56);
+  canvas.width = w;
+  ctx.font = `bold 64px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  roundRect(ctx, 4, 8, w - 8, 112, 40);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = '#fff';
+  ctx.stroke();
+  ctx.fillStyle = fg;
+  ctx.fillText(text, w / 2, 68);
+  tex.needsUpdate = true;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  s.scale.set(height * w / 128, height, 1);
+  s.renderOrder = 11;
+  return s;
+}
+
+export function createBoard3D(container, E, opts = {}) {
+  const { BOARD, ADJ, MAP_W, MAP_H, GROUPS, CHARACTERS, LANDS } = E;
+
+  // ---------- 场景基础 ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#aee0ff');
+  scene.fog = new THREE.Fog('#aee0ff', 70, 150);
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.12;
+  controls.enablePan = false;
+  controls.minDistance = 9;
+  controls.maxDistance = 70;
+  controls.maxPolarAngle = 1.25;
+  controls.minPolarAngle = 0.35;
+
+  scene.add(new THREE.HemisphereLight('#ffffff', '#7a9a5a', 1.1));
+  const sun = new THREE.DirectionalLight('#fff4e0', 1.8);
+  sun.position.set(-18, 30, 14);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 20, bottom: -20, near: 1, far: 90 });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun);
+
+  const world = (x, z) => new THREE.Vector3((x - (MAP_W - 1) / 2) * U, 0, (z - (MAP_H - 1) / 2) * U);
+  const cellPos = i => world(BOARD[i].x, BOARD[i].z);
+  const center = new THREE.Vector3(0, 0, 0);
+  const rng = (() => { let t = 12345; return () => { t = (t * 1103515245 + 12345) & 0x7fffffff; return t / 0x7fffffff; }; })();
+
+  // ---------- 地面、街区装饰 ----------
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_W * U + 70, MAP_H * U + 70), std('#8fd16f'));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // 道路：相邻路口之间铺沥青
+  const roadMat = std('#5f6b78');
+  const lineMat = std('#f5f1e6');
+  for (let a = 0; a < BOARD.length; a++) {
+    for (const b of ADJ[a]) {
+      if (b < a) continue;
+      const pa = cellPos(a), pb = cellPos(b), mid = pa.clone().add(pb).multiplyScalar(0.5);
+      const horiz = BOARD[a].z === BOARD[b].z;
+      const road = new THREE.Mesh(new THREE.BoxGeometry(horiz ? U : U * 0.72, 0.1, horiz ? U * 0.72 : U), roadMat);
+      road.position.set(mid.x, 0.05, mid.z);
+      road.receiveShadow = true;
+      scene.add(road);
+      const line = new THREE.Mesh(new THREE.BoxGeometry(horiz ? U * 0.3 : 0.06, 0.02, horiz ? 0.06 : U * 0.3), lineMat);
+      line.position.set(mid.x, 0.11, mid.z);
+      scene.add(line);
+    }
+  }
+
+  // 地产地块的朝向：朝向路网外侧或街区内部的空地，且不和别的地块重叠
+  const occupied = new Set(BOARD.map(c => c.x + ',' + c.z));
+  const usedLots = new Set();
+  const lotDir = {};
+  LANDS.forEach(i => {
+    const c = BOARD[i];
+    const horizontal = ADJ[i].some(n => BOARD[n].z === c.z);
+    const dirs = horizontal ? [[0, -1], [0, 1]] : [[1, 0], [-1, 0]];
+    const outside = ([dx, dz]) => c.x + dx < 0 || c.x + dx >= MAP_W || c.z + dz < 0 || c.z + dz >= MAP_H;
+    dirs.sort((a, b) => outside(b) - outside(a));
+    const d = dirs.find(([dx, dz]) => !occupied.has((c.x + dx) + ',' + (c.z + dz)) && !usedLots.has((c.x + dx) + ',' + (c.z + dz))) || dirs[0];
+    usedLots.add((c.x + d[0]) + ',' + (c.z + d[1]));
+    lotDir[i] = d;
+  });
+
+  // 树
+  const trunkMat = std('#8b5a2b'), leafMats = ['#3fae49', '#57c75e', '#2e8b57', '#6bcf63'].map(c => std(c, { flatShading: true }));
+  const trunkGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.6, 6), leafGeo = new THREE.IcosahedronGeometry(0.45, 0);
+  function tree(x, z, s = 1) {
+    const g = new THREE.Group();
+    const t = new THREE.Mesh(trunkGeo, trunkMat);
+    t.position.y = 0.3;
+    const l = new THREE.Mesh(leafGeo, leafMats[Math.floor(rng() * leafMats.length)]);
+    l.position.y = 0.85;
+    l.scale.set(1, 1.25, 1);
+    [t, l].forEach(m => { m.castShadow = true; g.add(m); });
+    g.position.set(x, 0, z);
+    g.scale.setScalar(s);
+    scene.add(g);
+  }
+  // 路边只种矮灌木，离路远的地方才种树；镜头一侧（南边）留空，免得挡住视线
+  const bushGeo = new THREE.IcosahedronGeometry(0.28, 0);
+  const nearRoad = (x, z) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => occupied.has((x + dx) + ',' + (z + dz)));
+  for (let z = -5; z < MAP_H + 5; z++) {
+    for (let x = -5; x < MAP_W + 5; x++) {
+      const key = x + ',' + z;
+      if (occupied.has(key) || usedLots.has(key)) continue;
+      const inside = x >= 0 && x < MAP_W && z >= 0 && z < MAP_H;
+      const p = world(x, z);
+      if (inside || nearRoad(x, z)) {
+        if (rng() < 0.55) {
+          const b = new THREE.Mesh(bushGeo, leafMats[Math.floor(rng() * leafMats.length)]);
+          b.position.set(p.x + (rng() - 0.5) * U * 0.5, 0.2, p.z + (rng() - 0.5) * U * 0.5);
+          b.scale.set(1, 0.8, 1);
+          b.castShadow = true;
+          scene.add(b);
+        }
+        if (inside && !nearRoad(x, z)) tree(p.x, p.z, 0.8);
+        continue;
+      }
+      if (z >= MAP_H && z < MAP_H + 3) continue;
+      if (Math.abs(x - MAP_W / 2) + Math.abs(z - MAP_H / 2) < 4) continue;
+      if (rng() < 0.55) tree(p.x + (rng() - 0.5) * U * 0.7, p.z + (rng() - 0.5) * U * 0.7, 0.8 + rng() * 0.5);
+    }
+  }
+  // 远处的城市背景
+  const farMats = ['#c9d6e3', '#b8c6d9', '#d8e0ea', '#aebfd4'].map(c => std(c));
+  for (let k = 0; k < 70; k++) {
+    const ang = rng() * Math.PI * 2, r = 34 + rng() * 22;
+    const h = 2 + rng() * 9;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(2 + rng() * 2, h, 2 + rng() * 2), farMats[k % farMats.length]);
+    b.position.set(Math.cos(ang) * r * 1.2, h / 2, Math.sin(ang) * r);
+    scene.add(b);
+  }
+  // 中央公园的喷泉
+  const park = BOARD.findIndex(c => c.type === 'park');
+  if (park >= 0) {
+    const pp = cellPos(park);
+    [[1, 1], [-1, 1], [1, -1], [-1, -1]].forEach(([sx, sz]) => {
+      const pond = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 0.12, 20), std('#4fc3f7', { roughness: 0.2 }));
+      pond.position.set(pp.x + sx * U * 0.75, 0.06, pp.z + sz * U * 0.75);
+      scene.add(pond);
+    });
+  }
+
+  // ---------- 路口格子 ----------
+  const tileGeo = new THREE.BoxGeometry(U * 0.9, 0.3, U * 0.9);
+  const tileSide = std('#e9e2d0');
+  const tiles = BOARD.map((c, i) => {
+    const top = makeCanvas(256, 256);
+    const mesh = new THREE.Mesh(tileGeo, [tileSide, tileSide, new THREE.MeshStandardMaterial({ map: top.tex, roughness: 0.8 }), tileSide, tileSide, tileSide]);
+    const p = cellPos(i);
+    mesh.position.set(p.x, 0.15, p.z);
+    mesh.receiveShadow = true;
+    mesh.userData.cell = i;
+    scene.add(mesh);
+    // 高亮层（可选目标、走过的轨迹）
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(U * 0.94, U * 0.94), new THREE.MeshBasicMaterial({ color: '#ff2d55', transparent: true, opacity: 0, depthWrite: false }));
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.set(p.x, 0.32, p.z);
+    glow.userData.cell = i;
+    scene.add(glow);
+    return { mesh, top, glow, key: '', trail: 0 };
+  });
+
+  function drawTile(i, s) {
+    const c = BOARD[i], t = tiles[i];
+    let key;
+    if (c.type === 'land') {
+      const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
+      key = `${owner ? owner.color : ''}|${ld.level}|${owner ? E.rentFor(s, i) : c.price}`;
+    } else key = c.type;
+    if (t.key === key) return;
+    t.key = key;
+    const g = t.top.ctx;
+    g.clearRect(0, 0, 256, 256);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    if (c.type === 'land') {
+      const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
+      const grp = GROUPS[c.group];
+      g.fillStyle = owner ? owner.color : '#fbf6ea';
+      g.fillRect(0, 0, 256, 256);
+      if (owner) { g.fillStyle = 'rgba(255,255,255,.72)'; g.fillRect(14, 14, 228, 228); }
+      g.fillStyle = grp.color;
+      g.fillRect(0, 0, 256, 78);
+      g.fillStyle = '#fff';
+      g.font = `bold ${c.name.length > 2 ? 46 : 54}px ${FONT}`;
+      g.fillText(c.name, 128, 42);
+      g.fillStyle = owner ? '#222' : '#7a5c3a';
+      g.font = `bold 40px ${FONT}`;
+      g.fillText(owner ? '过路费' : '地价', 128, 118);
+      g.font = `bold 50px ${FONT}`;
+      const v = owner ? E.rentFor(s, i) : c.price;
+      g.fillText(v >= 10000 ? '¥' + (v / 10000).toFixed(1).replace(/\.0$/, '') + '万' : '¥' + v.toLocaleString('en-US'), 128, 170);
+      if (owner) {
+        g.font = `40px ${FONT}`;
+        g.fillStyle = '#f0a500';
+        g.fillText('★'.repeat(ld.level) + '☆'.repeat(5 - ld.level), 128, 222);
+      }
+    } else {
+      const [bg, icon] = TYPE_STYLE[c.type] || ['#eee', '❔'];
+      g.fillStyle = bg;
+      g.fillRect(0, 0, 256, 256);
+      g.fillStyle = 'rgba(255,255,255,.35)';
+      g.fillRect(12, 12, 232, 232);
+      g.font = `110px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${FONT}`;
+      g.fillText(icon, 128, 108);
+      g.fillStyle = '#2d1e10';
+      g.font = `bold ${c.name.length > 3 ? 40 : 48}px ${FONT}`;
+      g.fillText(c.name, 128, 212);
+    }
+    g.strokeStyle = 'rgba(0,0,0,.25)';
+    g.lineWidth = 8;
+    g.strokeRect(4, 4, 248, 248);
+    t.top.tex.needsUpdate = true;
+  }
+
+  // ---------- 地块与楼房 ----------
+  const winTex = (() => {
+    const { ctx, tex } = makeCanvas(64, 64);
+    ctx.fillStyle = '#fbf8f1';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#7cc4f2';
+    for (let y = 6; y < 64; y += 20) for (let x = 6; x < 64; x += 20) ctx.fillRect(x, y, 12, 12);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  })();
+  const glassTex = (() => {
+    const { ctx, tex } = makeCanvas(64, 64);
+    ctx.fillStyle = '#8fd0ff';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#d9f1ff';
+    for (let y = 0; y < 64; y += 16) ctx.fillRect(0, y, 64, 3);
+    for (let x = 0; x < 64; x += 16) ctx.fillRect(x, 0, 2, 64);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  })();
+  function texMat(base, rx, ry) {
+    const t = base.clone();
+    t.needsUpdate = true;
+    t.repeat.set(rx, ry);
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.5 });
+  }
+
+  const lots = {};
+  LANDS.forEach(i => {
+    const [dx, dz] = lotDir[i], p = cellPos(i);
+    const lc = new THREE.Vector3(p.x + dx * U * 0.95, 0, p.z + dz * U * 0.95);
+    const grp = GROUPS[BOARD[i].group];
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(U * 0.86, 0.14, U * 0.86), std(new THREE.Color(grp.color).lerp(new THREE.Color('#ffffff'), 0.55)));
+    plate.position.set(lc.x, 0.07, lc.z);
+    plate.receiveShadow = true;
+    plate.userData.cell = i;
+    scene.add(plate);
+    const holder = new THREE.Group();
+    holder.position.set(lc.x, 0.14, lc.z);
+    scene.add(holder);
+    lots[i] = { holder, center: lc, key: null, building: null };
+  });
+
+  function flagOn(g, color, y) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6), std('#666'));
+    pole.position.set(0.55, y + 0.45, 0.55);
+    const flag = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.28, 0.02), std(color));
+    flag.position.set(0.78, y + 0.75, 0.55);
+    g.add(pole, flag);
+  }
+  function makeBuilding(level, color) {
+    const g = new THREE.Group();
+    const roof = std(color), wall = std(LEVEL_COLORS.wall);
+    const add = (geo, mat, y, x = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; g.add(m); return m; };
+    let top = 0;
+    if (level === 1) {
+      add(new THREE.BoxGeometry(1.0, 0.7, 0.9), wall, 0.35);
+      const r = add(new THREE.ConeGeometry(0.85, 0.6, 4), roof, 1.0);
+      r.rotation.y = Math.PI / 4;
+      add(new THREE.BoxGeometry(0.22, 0.4, 0.02), std('#8b5a2b'), 0.2, 0, 0.46);
+      top = 1.3;
+    } else if (level === 2) {
+      add(new THREE.BoxGeometry(1.1, 1.3, 1.0), texMat(winTex, 2, 2), 0.65);
+      const r = add(new THREE.ConeGeometry(0.95, 0.7, 4), roof, 1.65);
+      r.rotation.y = Math.PI / 4;
+      top = 2.0;
+    } else if (level === 3) {
+      add(new THREE.BoxGeometry(1.15, 2.2, 1.15), texMat(winTex, 2, 4), 1.1);
+      add(new THREE.BoxGeometry(1.25, 0.18, 1.25), roof, 2.29);
+      top = 2.4;
+    } else if (level === 4) {
+      add(new THREE.BoxGeometry(1.15, 3.3, 1.15), texMat(glassTex, 2, 6), 1.65);
+      add(new THREE.BoxGeometry(1.25, 0.25, 1.25), roof, 1.2);
+      add(new THREE.BoxGeometry(1.25, 0.25, 1.25), roof, 3.35);
+      top = 3.5;
+    } else if (level === 5) {
+      add(new THREE.BoxGeometry(1.35, 1.2, 1.35), texMat(winTex, 3, 2), 0.6);
+      add(new THREE.BoxGeometry(1.0, 3.6, 1.0), texMat(glassTex, 2, 7), 3.0);
+      add(new THREE.BoxGeometry(0.7, 0.9, 0.7), roof, 5.25);
+      add(new THREE.CylinderGeometry(0.03, 0.08, 1.3, 6), std('#ddd', { metalness: 0.6 }), 6.35);
+      top = 5.7;
+    }
+    flagOn(g, color, top);
+    return g;
+  }
+  function saleSign(color) {
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), std('#8b5a2b'));
+    post.position.y = 0.4;
+    const { ctx, tex } = makeCanvas(128, 64);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 128, 64);
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold 40px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('待售', 64, 34);
+    tex.needsUpdate = true;
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.38, 0.04), [std('#fff'), std('#fff'), std('#fff'), std('#fff'), new THREE.MeshStandardMaterial({ map: tex }), std('#fff')]);
+    board.position.y = 0.85;
+    [post, board].forEach(m => { m.castShadow = true; g.add(m); });
+    return g;
+  }
+
+  const anims = [];
+  function animate(ms, update) {
+    return new Promise(resolve => anims.push({ t0: performance.now(), ms: Math.max(ms, 1), update, resolve }));
+  }
+
+  function setLot(i, s) {
+    const ld = s.lands[i], lot = lots[i];
+    const owner = ld.owner !== null ? s.players[ld.owner] : null;
+    const key = owner ? `${owner.color}|${ld.level}` : 'none';
+    if (lot.key === key) return;
+    const first = lot.key === null;
+    const grew = !first && owner && (!lot.prev || ld.level > lot.prev.level || lot.prev.owner !== ld.owner);
+    lot.key = key;
+    lot.prev = { level: ld.level, owner: ld.owner };
+    lot.holder.clear();
+    const b = owner ? makeBuilding(ld.level, owner.color) : saleSign(GROUPS[BOARD[i].group].color);
+    b.traverse(o => { o.userData.cell = i; });
+    lot.holder.add(b);
+    if (grew) {
+      b.scale.set(1, 0.01, 1);
+      animate(700, t => b.scale.set(1, Math.max(0.01, easeOutBack(t)), 1));
+    }
+  }
+
+  // ---------- 神仙与障碍 ----------
+  const markers = {};
+  function syncMarkers(s) {
+    const want = {};
+    Object.entries(s.gods).forEach(([c, g]) => { want[c + ':god'] = [Number(c), E.GODS[g].emoji, 'god']; });
+    Object.entries(s.obstacles).forEach(([c, o]) => { want[c + ':ob'] = [Number(c), o === 'mine' ? '💣' : '🚧', 'ob']; });
+    Object.keys(markers).forEach(k => {
+      if (!want[k] || want[k][1] !== markers[k].emoji) { scene.remove(markers[k].sprite); delete markers[k]; }
+    });
+    Object.entries(want).forEach(([k, [c, emoji, kind]]) => {
+      if (markers[k]) return;
+      const sp = emojiSprite(emoji, kind === 'god' ? 1.3 : 1.1);
+      const p = cellPos(c);
+      sp.position.set(p.x + (kind === 'god' ? 0.35 : -0.35), kind === 'god' ? 1.4 : 0.75, p.z);
+      scene.add(sp);
+      markers[k] = { sprite: sp, emoji, kind, base: sp.position.y, phase: rng() * 6 };
+    });
+  }
+
+  // ---------- 棋子 ----------
+  let pieces = [];
+  const OFFSETS = {
+    1: [[0, 0]], 2: [[-0.22, 0], [0.22, 0]], 3: [[-0.22, -0.18], [0.22, -0.18], [0, 0.22]],
+    4: [[-0.22, -0.2], [0.22, -0.2], [-0.22, 0.22], [0.22, 0.22]],
+    5: [[-0.27, -0.2], [0, -0.2], [0.27, -0.2], [-0.14, 0.22], [0.14, 0.22]],
+    6: [[-0.27, -0.2], [0, -0.2], [0.27, -0.2], [-0.27, 0.22], [0, 0.22], [0.27, 0.22]],
+  };
+  let posArr = [], alive = [];
+  function makePiece(p) {
+    const g = new THREE.Group();
+    const col = new THREE.Color(p.color);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.16, 24), std(col.clone().multiplyScalar(0.75)));
+    base.position.y = 0.08;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.4, 0.8, 20), std(col, { roughness: 0.45 }));
+    body.position.y = 0.56;
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.06, 8, 20), std('#ffffff'));
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = 0.96;
+    [base, body, collar].forEach(m => { m.castShadow = true; g.add(m); });
+    const head = emojiSprite(CHARACTERS[p.char].emoji, 1.25);
+    head.position.y = 1.5;
+    g.add(head);
+    const tag = textSprite(p.name, p.color, '#fff', 0.5);
+    tag.position.y = 2.45;
+    g.add(tag);
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.55, 4), std('#ffd43b', { emissive: '#ffb300', emissiveIntensity: 0.6 }));
+    arrow.rotation.x = Math.PI;
+    arrow.position.y = 3.2;
+    arrow.visible = false;
+    g.add(arrow);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.8, 40), new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    ring.visible = false;
+    g.add(ring);
+    const bubble = emojiSprite('💭', 0.8);
+    bubble.position.set(0.75, 2.0, 0);
+    bubble.visible = false;
+    g.add(bubble);
+    scene.add(g);
+    return { group: g, head, tag, arrow, ring, bubble, moving: false };
+  }
+  function pieceTarget(k) {
+    const cell = posArr[k];
+    const same = alive.map((a, j) => j).filter(j => alive[j] && posArr[j] === cell);
+    const off = (OFFSETS[same.length] || OFFSETS[6])[Math.max(0, same.indexOf(k))] || [0, 0];
+    const p = cellPos(cell);
+    return new THREE.Vector3(p.x + off[0] * U, 0.3, p.z + off[1] * U);
+  }
+
+  // ---------- 相机 ----------
+  let viewMode = 'follow', focus = null;
+  camera.position.set(0, 15, 15);
+  controls.target.set(0, 0, 0);
+  // 竖屏（手机）时视野窄，镜头要拉远一些
+  const viewDist = mode => (mode === 'follow' ? 19 : 44) * Math.max(1, 1.25 / Math.max(camera.aspect, 0.3));
+  function setView(mode) {
+    viewMode = mode;
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    camera.position.copy(controls.target).add(dir.multiplyScalar(viewDist(mode)));
+  }
+
+  // ---------- 选格高亮、岔路箭头、特效 ----------
+  let selectable = null;
+  let forkArrows = [];
+  let onFork = null;
+  function setFork(options, from, cb) {
+    forkArrows.forEach(a => scene.remove(a));
+    forkArrows = [];
+    onFork = cb || null;
+    if (!options) return;
+    const fp = cellPos(from);
+    options.forEach(o => {
+      const p = cellPos(o);
+      const g = new THREE.Group();
+      const mat = std('#ffd43b', { emissive: '#ff9f00', emissiveIntensity: 0.7 });
+      const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.7), mat);
+      shaft.position.z = 0.15;
+      const headM = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.6, 4), mat);
+      headM.rotation.x = -Math.PI / 2;
+      headM.rotation.y = Math.PI / 4;
+      headM.position.z = -0.45;
+      g.add(shaft, headM);
+      g.traverse(m => { m.userData.fork = o; m.castShadow = true; });
+      g.position.set(p.x, 0.9, p.z);
+      g.rotation.y = Math.atan2(-(p.x - fp.x), -(p.z - fp.z));
+      g.userData.base = g.position.clone();
+      scene.add(g);
+      forkArrows.push(g);
+    });
+  }
+
+  const effects = [];
+  function ringBurst(i, color) {
+    const p = cellPos(i);
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 40), new THREE.MeshBasicMaterial({ color, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(p.x, 0.35, p.z);
+    scene.add(m);
+    animate(900, t => { m.scale.setScalar(1 + t * 1.8); m.material.opacity = 1 - t; if (t >= 1) scene.remove(m); });
+  }
+  function floatText(pos, text, bg) {
+    const sp = textSprite(text, bg, '#fff', 0.6);
+    sp.position.copy(pos);
+    scene.add(sp);
+    animate(1600, t => { sp.position.y = pos.y + t * 1.5; sp.material.opacity = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3; if (t >= 1) scene.remove(sp); });
+  }
+  function flash(i, kind, color) {
+    if (kind === 'trail') { tiles[i].trail = 1; tiles[i].glow.material.color.set(color); return; }
+    if (kind === 'landed') { ringBurst(i, color); return; }
+    const lot = lots[i];
+    if (!lot) return;
+    if (kind === 'stamp') {
+      floatText(lot.center.clone().setY(2.2), '已购', color);
+      ringBurst(i, color);
+    } else if (kind === 'crash') {
+      const h = lot.holder, x0 = h.position.x;
+      animate(600, t => { h.position.x = x0 + Math.sin(t * 40) * 0.12 * (1 - t); });
+      floatText(lot.center.clone().setY(1.6), '💥 拆！', '#e03131');
+    }
+  }
+
+  // ---------- 点击 ----------
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  let downAt = null;
+  renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    if (forkArrows.length) {
+      const hit = raycaster.intersectObjects(forkArrows, true)[0];
+      if (hit && onFork) { onFork(hit.object.userData.fork); return; }
+    }
+    const hits = raycaster.intersectObjects(scene.children, true);
+    const h = hits.find(x => x.object.userData.fork !== undefined || x.object.userData.cell !== undefined);
+    if (!h) return;
+    if (h.object.userData.fork !== undefined && onFork) onFork(h.object.userData.fork);
+    else if (opts.onCellClick) opts.onCellClick(h.object.userData.cell);
+  });
+
+  // ---------- 主循环 ----------
+  let last = performance.now();
+  const clock = { t: 0 };
+  function frame(now) {
+    const rawDt = (now - last) / 1000;
+    const dt = Math.min(0.05, rawDt);
+    last = now;
+    clock.t += dt;
+    for (let k = anims.length - 1; k >= 0; k--) {
+      const a = anims[k], t = Math.min(1, (now - a.t0) / a.ms);
+      a.update(t);
+      if (t >= 1) { anims.splice(k, 1); a.resolve(); }
+    }
+    // 相机平滑跟随
+    const want = viewMode === 'follow' && focus !== null && pieces[focus] ? pieces[focus].group.position.clone().setY(0) : center.clone();
+    const delta = want.sub(controls.target).multiplyScalar(1 - Math.pow(0.02, Math.min(rawDt, 0.25)));
+    controls.target.add(delta);
+    camera.position.add(delta);
+    controls.update();
+    // 动态元素
+    pieces.forEach(pc => {
+      if (pc.arrow.visible) { pc.arrow.position.y = 3.2 + Math.sin(clock.t * 4) * 0.18; pc.arrow.rotation.y += dt * 2; }
+      if (pc.ring.visible) { const s = 1 + (Math.sin(clock.t * 4) + 1) * 0.12; pc.ring.scale.setScalar(s); }
+      if (pc.bubble.visible) pc.bubble.position.y = 2.0 + Math.sin(clock.t * 5) * 0.08;
+    });
+    Object.values(markers).forEach(m => { m.sprite.position.y = m.base + Math.sin(clock.t * 2.5 + m.phase) * (m.kind === 'god' ? 0.2 : 0.03); });
+    forkArrows.forEach(a => { a.position.y = a.userData.base.y + Math.abs(Math.sin(clock.t * 4)) * 0.35; });
+    tiles.forEach((t, i) => {
+      if (selectable && selectable.has(i)) { t.glow.material.color.set('#ff2d55'); t.glow.material.opacity = 0.35 + Math.sin(clock.t * 6) * 0.2; }
+      else if (t.trail > 0) { t.trail = Math.max(0, t.trail - dt * 0.8); t.glow.material.opacity = t.trail * 0.55; }
+      else t.glow.material.opacity = 0;
+    });
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  function resize() {
+    const w = container.clientWidth, h = container.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    renderer.domElement.style.width = w + 'px';
+    renderer.domElement.style.height = h + 'px';
+    const changed = Math.abs(camera.aspect - w / h) > 0.05;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    if (changed) setView(viewMode);
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(container);
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- 对外接口 ----------
+  return {
+    // 新的一局：重建棋子
+    reset(s) {
+      pieces.forEach(pc => scene.remove(pc.group));
+      pieces = s.players.map(makePiece);
+      posArr = s.players.map(p => p.pos);
+      alive = s.players.map(p => !p.bankrupt);
+      Object.values(lots).forEach(l => { l.key = null; l.prev = null; });
+      tiles.forEach(t => { t.key = ''; });
+      setFork(null);
+      selectable = null;
+      pieces.forEach((pc, k) => pc.group.position.copy(pieceTarget(k)));
+    },
+    // 同步展示状态（不带动画的部分）
+    update(s, pos, active, thinking) {
+      posArr = pos.slice();
+      alive = s.players.map(p => !p.bankrupt);
+      BOARD.forEach((_, i) => drawTile(i, s));
+      LANDS.forEach(i => setLot(i, s));
+      syncMarkers(s);
+      pieces.forEach((pc, k) => {
+        pc.group.visible = alive[k];
+        if (!pc.moving) pc.group.position.copy(pieceTarget(k));
+        const isActive = k === active;
+        pc.arrow.visible = isActive;
+        pc.ring.visible = isActive;
+        pc.tag.scale.multiplyScalar(1 / (pc.tagScale || 1));
+        pc.tagScale = isActive ? 1.25 : 0.8;
+        pc.tag.scale.multiplyScalar(pc.tagScale);
+        pc.bubble.visible = k === thinking;
+        pc.head.material.color.set(s.players[k].stay > 0 ? '#999' : '#fff');
+      });
+      if (active !== null && active !== undefined) focus = active;
+    },
+    // 走一步（跳到相邻格）
+    async step(k, cell, ms) {
+      const pc = pieces[k];
+      if (!pc) return;
+      focus = k;
+      pc.moving = true;
+      posArr[k] = cell;
+      const from = pc.group.position.clone(), to = pieceTarget(k);
+      pc.group.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+      await animate(ms, t => {
+        pc.group.position.lerpVectors(from, to, easeInOut(t));
+        pc.group.position.y = to.y + Math.sin(Math.PI * t) * 1.1;
+        const sq = t < 0.15 ? 1 - t * 1.5 : t > 0.85 ? 1 - (1 - t) * 1.5 : 1;
+        pc.group.scale.set(1, sq, 1);
+      });
+      pc.group.scale.set(1, 1, 1);
+      pc.moving = false;
+    },
+    // 瞬移（进监狱、传送）
+    async jump(k, cell, ms) {
+      const pc = pieces[k];
+      if (!pc) return;
+      focus = k;
+      pc.moving = true;
+      await animate(ms / 2, t => { pc.group.scale.setScalar(Math.max(0.01, 1 - t)); pc.group.position.y = 0.3 + t * 2; });
+      posArr[k] = cell;
+      pc.group.position.copy(pieceTarget(k)).setY(2.3);
+      await animate(ms / 2, t => { pc.group.scale.setScalar(Math.max(0.01, t)); pc.group.position.y = 2.3 - t * 2; });
+      pc.group.scale.setScalar(1);
+      pc.moving = false;
+    },
+    flash,
+    setSelectable(cells) { selectable = cells ? new Set(cells) : null; },
+    setFork(options, from, cb) { setFork(options, from, cb); },
+    setView(mode) { setView(mode); },
+    get viewMode() { return viewMode; },
+    focusOn(k) { focus = k; },
+    // 棋子头顶在容器里的屏幕坐标（用于飘字）
+    screenOf(k) {
+      const pc = pieces[k];
+      if (!pc) return null;
+      const v = pc.group.position.clone().setY(pc.group.position.y + 2.2).project(camera);
+      return [(v.x + 1) / 2 * container.clientWidth, (1 - v.y) / 2 * container.clientHeight];
+    },
+    resize,
+  };
+}

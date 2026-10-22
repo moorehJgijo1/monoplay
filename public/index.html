@@ -99,27 +99,29 @@
 <!-- 游戏 -->
 <section id="game" class="screen hidden">
   <div class="game-layout">
-    <div class="board-wrap">
-      <div id="board" class="board">
-        <div class="center">
-          <div class="center-top">
-            <div class="mini-logo">大富翁<small>欢乐城</small></div>
-            <div id="roundInfo" class="round-info"></div>
-          </div>
+    <div class="board-wrap" id="boardWrap">
+      <div id="board3d" class="board3d"></div>
+      <div class="hud">
+        <div class="hud-top">
           <div class="now-playing">
             <div id="nowAvatar" class="now-avatar"></div>
             <div class="now-info">
               <div id="nowName" class="now-name"></div>
               <div id="nowSub" class="now-sub"></div>
             </div>
-            <div id="dice" class="dice"></div>
           </div>
-          <div id="centerLog" class="center-log"></div>
-          <div id="stage" class="stage hidden"></div>
+          <div class="hud-right">
+            <div id="roundInfo" class="round-info"></div>
+            <button class="btn small" id="viewBtn">🗺️ 全景</button>
+          </div>
         </div>
-        <div id="pieces" class="pieces"></div>
+        <div id="centerLog" class="hud-log"></div>
+        <div id="dice" class="dice hud-dice"></div>
       </div>
+      <div id="floaters" class="floaters"></div>
+      <div id="stage" class="stage hidden"></div>
       <div id="selectBanner" class="select-banner hidden"><span></span><button class="btn small" id="cancelSelect">取消</button></div>
+      <div id="noWebgl" class="no-webgl hidden">你的浏览器不支持 WebGL，无法显示 3D 地图。请换用新版 Chrome / Edge / Safari。</div>
     </div>
 
     <aside class="side">
@@ -147,8 +149,9 @@
 <div id="toasts" class="toasts"></div>
 <div id="modal" class="modal hidden"><div class="modal-box"><button class="modal-x" id="modalClose">✕</button><div id="modalBody"></div></div></div>
 
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 <script src="engine.js"></script>
 <script src="ai.js"></script>
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

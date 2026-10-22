@@ -5,7 +5,7 @@
 })(typeof self !== 'undefined' ? self : this, function (E) {
   'use strict';
 
-  const { BOARD, N, GROUP_CELLS, LANDS, CARDS } = E;
+  const { BOARD, GROUP_CELLS, LANDS } = E;
 
   // 由局面决定的伪随机数，让同一局面下电脑的选择可复现
   function rnd(s, salt) {
@@ -45,6 +45,22 @@
       case 'chance': return 200;
       default: return 0;
     }
+  }
+
+  // 从 pos（上一步在 prev）出发恰好走 steps 步能到的所有格子；岔路口电脑可以自己选
+  function endpoints(pos, prev, steps, out = new Set()) {
+    if (steps === 0) { out.add(pos); return out; }
+    let f = E.ADJ[pos].filter(n => n !== prev);
+    if (!f.length) f = E.ADJ[pos];
+    f.forEach(n => endpoints(n, pos, steps - 1, out));
+    return out;
+  }
+  const bestLanding = (s, i, pos, prev, steps) => Math.max(...[...endpoints(pos, prev, steps)].map(c => cellScore(s, i, c)));
+  // 掷两颗骰子时，按概率加权的落点好坏
+  function expectedRoll(s, i, pos, prev) {
+    let v = 0;
+    for (let t = 2; t <= 12; t++) v += bestLanding(s, i, pos, prev, t) * (6 - Math.abs(t - 7)) / 36;
+    return v;
   }
 
   function leader(s, i) {
@@ -106,15 +122,15 @@
         case 'turtle': if (behind && rnd(s, 2) < 0.5) add(40, leadId); break;
         case 'rob': if (s.players[lead].cards.length && p.cards.length < E.MAX_CARDS) add(40, targets.includes(leadId) ? leadId : targets[0]); break;
         case 'robot': {
-          for (let k = 1; k <= 10; k++) if (s.obstacles[(p.pos + p.dir * k + N) % N]) { add(60); break; }
+          if (Object.keys(s.obstacles).some(c => E.dist(p.pos, Number(c)) <= 10)) add(60);
           break;
         }
         case 'mine': case 'roadblock': {
           // 放在领先对手前方、且自己暂时不会经过的地方
           const lp = s.players[lead];
           const cand = targets.filter(c => {
-            for (let k = 2; k <= 9; k++) if ((lp.pos + lp.dir * k + N) % N === c) return true;
-            return false;
+            const d = E.dist(lp.pos, c);
+            return d >= 2 && d <= 9 && E.dist(p.pos, c) > 2;
           }).filter(c => !(key === 'roadblock' && BOARD[c].type === 'land' && s.lands[c].owner !== i));
           const best = key === 'roadblock'
             ? cand.find(c => BOARD[c].type === 'land' && s.lands[c].owner === i && s.lands[c].level > 0) ?? cand.find(c => BOARD[c].type === 'police')
@@ -126,7 +142,7 @@
           if (s.forcedDice) break;
           let best = null, bestScore = -Infinity, avg = 0;
           for (let t = 2; t <= 12; t++) {
-            const cell = (p.pos + p.dir * t + N) % N, sc = cellScore(s, i, cell);
+            const sc = bestLanding(s, i, p.pos, p.prev, t);
             avg += sc * (6 - Math.abs(t - 7)) / 36;
             if (sc > bestScore) { bestScore = sc; best = t; }
           }
@@ -134,13 +150,10 @@
           break;
         }
         case 'turn': {
-          // 前方 12 格内对手地产的威胁
-          const danger = dir => {
-            let d = 0;
-            for (let k = 2; k <= 12; k++) d += Math.min(0, cellScore(s, i, (p.pos + dir * k + N) % N));
-            return d;
-          };
-          if (danger(-p.dir) - danger(p.dir) > 4000) add(50, p.id);
+          // 掉头后的预期落点明显更好，就给自己用
+          if (p.prev === null) break;
+          const back = E.ADJ[p.pos].find(n => n !== p.prev);
+          if (back !== undefined && expectedRoll(s, i, p.pos, back) - expectedRoll(s, i, p.pos, p.prev) > 1200) add(50, p.id);
           break;
         }
         case 'stay': if (cellScore(s, i, p.pos) >= 800 && BOARD[p.pos].type === 'land') add(30); break;
@@ -169,6 +182,15 @@
     switch (s.phase) {
       case 'roll':
         return chooseCard(s, i) || { type: 'roll' };
+      case 'fork': {
+        const { options, left } = s.fork;
+        let best = options[0], bestV = -Infinity;
+        options.forEach(o => {
+          const v = bestLanding(s, i, o, p.pos, left - 1);
+          if (v > bestV) { bestV = v; best = o; }
+        });
+        return { type: 'chooseFork', to: best };
+      }
       case 'buy': {
         const price = E.buyPrice(s, i, p.pos);
         const ok = p.cash - price >= res * 0.6 || (completesGroup(s, i, p.pos) && p.cash - price >= 500);

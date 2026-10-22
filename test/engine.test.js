@@ -54,3 +54,23 @@ test('remote dice sets the roll', () => {
   E.applyAction(s, 'a', { type: 'roll' });
   assert.strictEqual(s.dice[0] + s.dice[1], 9);
 });
+
+test('walking into an intersection asks which way to go', () => {
+  const s = E.createGame([{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], { seed: 9, shuffleOrder: false });
+  // 起点向右第 6 格是岔路口（顶部大街与南北大街交汇）
+  s.players[0].cards = ['remote'];
+  E.applyAction(s, 'a', { type: 'useCard', index: 0, target: 9 });
+  E.applyAction(s, 'a', { type: 'roll' });
+  assert.strictEqual(s.phase, 'fork');
+  assert.strictEqual(s.fork.left, 3);
+  assert.strictEqual(s.fork.options.length, 2);
+  const down = s.fork.options.find(c => E.BOARD[c].z > 0);
+  assert.ok(E.applyAction(s, 'a', { type: 'chooseFork', to: 12345 }).error);
+  assert.ok(E.applyAction(s, 'a', { type: 'chooseFork', to: down }).ok);
+  assert.strictEqual(s.players[0].pos === down || E.BOARD[s.players[0].pos].x === 6, true);
+});
+
+test('every cell is reachable and the map has intersections', () => {
+  E.BOARD.forEach((_, c) => assert.ok(Number.isFinite(E.dist(E.START, c))));
+  assert.strictEqual(E.ADJ.filter(a => a.length > 2).length, 5);
+});
