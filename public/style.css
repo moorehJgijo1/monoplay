@@ -98,12 +98,15 @@ input, select {
 #game.screen { padding: 10px; }
 .game-layout { display: flex; gap: 14px; align-items: flex-start; justify-content: center; }
 .board-wrap { position: relative; width: min(calc(100vh - 20px), calc(100vw - 400px)); min-width: 300px; flex: none; }
-.side { width: 360px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 20px); }
+.side { width: 360px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 20px); overflow-y: auto; padding: 4px 6px 4px 18px; margin-left: -18px; }
+/* 侧边栏里只有记录区会被压缩，操作面板、手牌、玩家列表始终完整显示；放不下时整个侧边栏滚动 */
+.side > * { flex: none; }
+.side > .log-panel { flex: 1 1 auto; }
 @media (max-width: 880px) {
   #game.screen { padding: 6px; }
   .game-layout { flex-direction: column; align-items: stretch; gap: 8px; }
   .board-wrap { width: 100%; min-width: 0; }
-  .side { width: 100%; max-height: none; }
+  .side { width: 100%; max-height: none; overflow: visible; padding: 0; margin: 0; }
   .pl.cur { transform: none; }
   .pl.cur::before { display: none; }
 }
@@ -336,12 +339,13 @@ input, select {
 .side-top { display: flex; gap: 6px; flex-wrap: wrap; }
 .side-top #autoBtn.on { background: #c8f7d2; border-color: var(--good); }
 .panel { background: var(--card); border: 2px solid var(--line); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); }
-.action-panel { min-height: 92px; position: relative; overflow: hidden; }
+.action-panel { min-height: 92px; position: relative; }
 .action-panel.mine { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,69,44,.25), var(--shadow); animation: attention 1.6s ease-in-out infinite; }
 @keyframes attention { 50% { box-shadow: 0 0 0 6px rgba(232,69,44,.12), var(--shadow); } }
 .action-panel h3 { margin: 0 0 6px; font-size: 1.12rem; display: flex; align-items: center; gap: 8px; }
 .action-panel p { margin: 4px 0 8px; font-size: .92rem; }
-.action-panel .row { margin: 8px 0 0; }
+.action-panel .row { margin: 8px 0 0; gap: 8px; }
+.action-panel .row.upgrades .btn { padding: 6px 10px; font-size: .9rem; }
 .wait-dots::after { content: "…"; animation: dots 1.2s steps(3) infinite; display: inline-block; width: 1.2em; overflow: hidden; vertical-align: bottom; }
 @keyframes dots { from { width: 0; } }
 .hand-title { font-weight: 700; font-size: .9rem; margin-bottom: 8px; display: flex; justify-content: space-between; }
@@ -375,7 +379,7 @@ input, select {
 .pl .cash.down { color: var(--bad); }
 .pl .meta { font-size: .78rem; color: var(--muted); grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 3px 9px; }
 .pl .meta .st { color: var(--accent); font-weight: 700; }
-.log-panel { display: flex; flex-direction: column; min-height: 160px; flex: 1; }
+.log-panel { display: flex; flex-direction: column; min-height: 160px; }
 .log-tabs { margin: 0 0 6px; }
 .log-tabs .tab { padding: 4px 10px; border-radius: 8px; font-size: .85rem; }
 .log { overflow-y: auto; font-size: .82rem; max-height: 240px; flex: 1; }

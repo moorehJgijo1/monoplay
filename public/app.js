@@ -927,7 +927,7 @@
         for (let k = 1; k <= maxLv; k++) btns.push(`<button class="btn ${k === 1 ? 'primary' : 'gold'}" data-act="upgrade" data-levels="${k}">${LEVEL_EMOJI[ld.level + k]} ${k === 1 ? '加盖 1 层' : `盖到${LEVELS[ld.level + k]}`} ${shortMoney(cost * k)}</button>`);
         html = `<h3>🔨 在「${cell.name}」盖楼？</h3>
           <p>现在是${LEVELS[ld.level]} ${LEVEL_EMOJI[ld.level]}，每层 ${money(cost)}，你的现金 ${money(p.cash)}</p>
-          <div class="row">${btns.join('')}<button class="btn" data-act="skip">不盖</button></div>`;
+          <div class="row upgrades">${btns.join('')}<button class="btn" data-act="skip">不盖</button></div>`;
         break;
       }
       case 'shop':
