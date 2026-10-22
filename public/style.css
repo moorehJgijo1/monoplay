@@ -143,7 +143,57 @@ input, select {
 }
 .hud-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .8; }
 .hud-log div:last-child { opacity: 1; font-weight: 700; color: #ffe066; }
-.hud-dice { position: absolute; right: 2cqmin; bottom: 2cqmin; }
+.hud .hud-dice { display: none; }
+
+/* ---------- 中央掷骰子 ---------- */
+.dice-stage {
+  --s: 17cqmin;
+  position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(20, 10, 0, .15), rgba(20, 10, 0, .55) 75%);
+  animation: fadein .2s;
+}
+.dice-stage.out { opacity: 0; transition: opacity .25s; }
+.dice-stage .burst {
+  position: absolute; width: 95cqmin; height: 95cqmin; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 214, 80, .55) 0 9deg, rgba(255, 255, 255, 0) 9deg 18deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, transparent 68%); mask: radial-gradient(circle, #000 18%, transparent 68%);
+  animation: burstin .5s cubic-bezier(.2, 1.4, .4, 1) both, spin 7s linear infinite;
+}
+.dice-stage .glow {
+  position: absolute; width: 50cqmin; height: 50cqmin; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 180, .85), rgba(255, 200, 60, .35) 45%, transparent 70%);
+  animation: glowpulse 1.2s ease-in-out infinite;
+}
+.dice-stage.reveal .glow { animation: flashglow .5s ease-out, glowpulse 1.2s .5s ease-in-out infinite; }
+@keyframes burstin { from { transform: scale(.2) rotate(-60deg); opacity: 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes flashglow { 0% { transform: scale(1.8); opacity: 1; } 100% { transform: scale(1); } }
+.dice-pair { position: relative; display: flex; gap: 7cqmin; }
+.die3d-wrap { width: var(--s); height: var(--s); perspective: 70cqmin; }
+.die3d { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+.die3d .face {
+  position: absolute; inset: 0; border-radius: 16%; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 13%;
+  background: radial-gradient(circle at 30% 25%, #ffffff, #f1f1f1 55%, #d9d9d9);
+  box-shadow: inset 0 0 0 .35cqmin rgba(0, 0, 0, .06), inset 0 -.8cqmin 1.4cqmin rgba(0, 0, 0, .12);
+}
+.die3d .face i { border-radius: 50%; margin: 10%; }
+.die3d .face i.on { background: radial-gradient(circle at 35% 35%, #555, #0d0d0d); box-shadow: inset 0 .3cqmin .3cqmin rgba(255,255,255,.25); }
+.die3d .face.red i.on { background: radial-gradient(circle at 35% 35%, #ff7070, #c40000); }
+.die3d .f1 { transform: translateZ(calc(var(--s) / 2)); }
+.die3d .f6 { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
+.die3d .f3 { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
+.die3d .f4 { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
+.die3d .f5 { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
+.die3d .f2 { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+.dice-total {
+  position: absolute; top: calc(50% + var(--s) * .75); left: 50%; transform: translateX(-50%) scale(0);
+  font-family: var(--display); font-size: 15cqmin; line-height: 1; color: #ffe066; text-align: center; white-space: nowrap;
+  text-shadow: .5cqmin .5cqmin 0 var(--accent-dark), 0 0 3cqmin rgba(255, 200, 0, .8);
+  -webkit-text-stroke: .25cqmin #fff;
+}
+.dice-total small { display: block; font-size: 5cqmin; color: #fff; -webkit-text-stroke: 0; text-shadow: 0 0 1.5cqmin #ff4d4d, .3cqmin .3cqmin 0 var(--accent-dark); }
+.dice-stage.reveal .dice-total { animation: totalpop .5s cubic-bezier(.2, 1.8, .4, 1) forwards; }
+@keyframes totalpop { 0% { transform: translateX(-50%) scale(0) rotate(-20deg); } 100% { transform: translateX(-50%) scale(1) rotate(0); } }
 @container (max-width: 520px) { .hud-log { display: none; } }
 .dice { display: flex; gap: 1.6cqmin; flex: none; }
 .die {

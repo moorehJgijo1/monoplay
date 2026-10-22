@@ -1,5 +1,6 @@
 // 大富翁前端：主页 / 联机房间 / 游戏界面。单机模式在浏览器里跑引擎和电脑玩家，联机模式连接服务器。
 import { createBoard3D } from './board3d.js';
+import { sfx, setSoundEnabled } from './sound.js';
 
 (() => {
   'use strict';
@@ -34,27 +35,9 @@ import { createBoard3D } from './board3d.js';
   };
   const PHASE_TEXT = { fork: '选择岔路', roll: '准备掷骰子', buy: '考虑买地', upgrade: '考虑盖楼', shop: '在道具店购物', casino: '在赌场', moving: '移动中', done: '' };
 
-  // ---------- 音效（WebAudio 合成，无需素材） ----------
+  // ---------- 音效（见 sound.js） ----------
   let soundOn = store.get('mono.sound', true);
-  let audio = null;
-  function tone(freq, dur = 0.08, type = 'square', vol = 0.05, when = 0) {
-    if (!soundOn) return;
-    try {
-      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-      const t = audio.currentTime + when, o = audio.createOscillator(), g = audio.createGain();
-      o.type = type; o.frequency.setValueAtTime(freq, t);
-      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
-    } catch { /* 浏览器不支持就静音 */ }
-  }
-  const sfx = {
-    step: () => tone(660, 0.04, 'triangle', 0.04),
-    dice: () => { for (let k = 0; k < 6; k++) tone(300 + Math.random() * 400, 0.03, 'square', 0.03, k * 0.06); },
-    good: () => { tone(660, 0.1, 'triangle', 0.06); tone(880, 0.12, 'triangle', 0.06, 0.1); tone(1320, 0.16, 'triangle', 0.05, 0.2); },
-    bad: () => { tone(400, 0.15, 'sawtooth', 0.04); tone(260, 0.25, 'sawtooth', 0.04, 0.15); },
-    info: () => tone(740, 0.1, 'sine', 0.06),
-    turn: () => { tone(523, 0.08, 'sine', 0.06); tone(784, 0.12, 'sine', 0.06, 0.09); },
-  };
+  setSoundEnabled(soundOn);
 
   // ---------- 提示 ----------
   function toast(emoji, title, text, cls = '') {
@@ -481,13 +464,65 @@ import { createBoard3D } from './board3d.js';
   const dieHTML = (v, cls = '') => `<div class="die ${cls} ${v === 1 || v === 4 ? 'red' : ''}">${Array.from({ length: 9 }, (_, i) => `<i class="${PIPS[v].includes(i) ? 'on' : ''}"></i>`).join('')}</div>`;
   const rnd6 = () => 1 + Math.floor(Math.random() * 6);
   async function rollDiceInto(box, final, ms) {
-    sfx.dice();
+    sfx.diceShake(ms * speedMul());
     const end = Date.now() + ms * speedMul();
     while (Date.now() < end) {
       box.innerHTML = final.map(() => dieHTML(rnd6(), 'rolling')).join('');
       await sleep(90);
     }
     box.innerHTML = final.map(v => dieHTML(v, 'land')).join('');
+    sfx.diceLand();
+  }
+
+  // ---------- 中央 3D 骰子 ----------
+  // 立方体六个面：正面 1、背面 6、右 3、左 4、上 5、下 2；把某个面转到正面需要的旋转
+  const FACE_ROT = { 1: [0, 0], 2: [90, 0], 3: [0, -90], 4: [0, 90], 5: [-90, 0], 6: [0, 180] };
+  const cubeFaces = () => [1, 2, 3, 4, 5, 6].map(v => `<div class="face f${v} ${v === 1 || v === 4 ? 'red' : ''}">${Array.from({ length: 9 }, (_, i) => `<i class="${PIPS[v].includes(i) ? 'on' : ''}"></i>`).join('')}</div>`).join('');
+  async function playDice(d) {
+    const T = PACE.dice * speedMul();
+    const st = $('#diceStage');
+    const doubles = d[0] === d[1];
+    st.className = 'dice-stage';
+    st.style.setProperty('--T', T + 'ms');
+    st.innerHTML = `<div class="burst"></div><div class="glow"></div><div class="dice-pair">${d.map((_, k) => `<div class="die3d-wrap w${k}"><div class="die3d">${cubeFaces()}</div></div>`).join('')}</div><div class="dice-total"></div>`;
+    const cubes = [...st.querySelectorAll('.die3d')];
+    const wraps = [...st.querySelectorAll('.die3d-wrap')];
+    st.classList.add('rolling');
+    // 抛出 → 落桌 → 弹起 → 再落 → 停稳（用 Web Animations，等动画真正播完再亮出点数）
+    const throwKF = k => {
+      const sx = k ? 30 : -30, sy = k ? -70 : -60, h = k ? 11 : 9;
+      return [
+        { transform: `translate(${sx}cqmin, ${sy}cqmin) scale(1.5)`, offset: 0 },
+        { transform: 'translate(0, 0) scale(1)', offset: 0.52 },
+        { transform: `translate(0, -${h}cqmin) scale(1)`, offset: 0.66 },
+        { transform: 'translate(0, 0) scale(1, .92)', offset: 0.8 },
+        { transform: `translate(0, -${h / 4}cqmin) scale(1)`, offset: 0.88 },
+        { transform: 'translate(0, 0) scale(1)', offset: 1 },
+      ];
+    };
+    const anims = [];
+    wraps.forEach((w, k) => anims.push(w.animate(throwKF(k), { duration: T * 0.72, easing: 'cubic-bezier(.35,0,.45,1)', fill: 'both' })));
+    cubes.forEach((c, k) => {
+      const [x, y] = FACE_ROT[d[k]];
+      const spinX = 360 * (2 + Math.floor(Math.random() * 2)), spinY = 360 * (2 + Math.floor(Math.random() * 2));
+      const from = `rotateX(${Math.random() * 360}deg) rotateY(${Math.random() * 360}deg) rotateZ(${Math.random() * 360}deg)`;
+      anims.push(c.animate([{ transform: from }, { transform: `rotateX(${x + spinX}deg) rotateY(${y + spinY}deg) rotateZ(0deg)` }],
+        { duration: T * 0.68, easing: 'cubic-bezier(.12,.62,.22,1)', fill: 'forwards' }));
+    });
+    sfx.diceShake(T * 0.36);
+    const hits = [setTimeout(() => sfx.diceLand(), T * 0.38), setTimeout(() => sfx.diceBounce(), T * 0.58)];
+    await Promise.all(anims.map(an => an.finished.catch(() => {})));
+    hits.forEach(clearTimeout);
+    const tot = st.querySelector('.dice-total');
+    tot.textContent = d[0] + d[1];
+    st.classList.add('reveal');
+    sfx.diceReveal(doubles);
+    view.dice = d;
+    await sleep(T * 0.28 + 450 * speedMul());
+    st.classList.add('out');
+    await sleep(260);
+    st.className = 'dice-stage hidden';
+    st.innerHTML = '';
   }
 
   // ---------- 状态到达：排队播放动画 ----------
@@ -536,18 +571,13 @@ import { createBoard3D } from './board3d.js';
     view.idleWaiters.splice(0).forEach(r => r());
   }
 
-  async function playDice(d) {
-    await rollDiceInto($('#dice'), d, PACE.dice * 0.75);
-    view.dice = d;
-    await wait(PACE.dice * 0.25);
-  }
 
   async function playMove(m) {
     const k = m.player, p = view.shown.players[k];
     const dest = m.path[m.path.length - 1];
     if (!board) { view.pos[k] = dest; return; }
     if (m.jump) {
-      sfx.info();
+      sfx.whoosh();
       view.pos[k] = dest;
       await board.jump(k, dest, PACE.jump * speedMul());
     } else {
@@ -576,11 +606,11 @@ import { createBoard3D } from './board3d.js';
     view.pos = s.players.map(p => p.pos);
     renderAll();
     if (board) changes.forEach(([c, cls, color]) => board.flash(c, cls, color));
-    if (changes.some(x => x[1] === 'stamp')) sfx.good();
-    else if (changes.some(x => x[1] === 'build')) sfx.good();
-    else if (changes.some(x => x[1] === 'crash')) sfx.bad();
+    if (changes.some(x => x[1] === 'stamp')) sfx.buy();
+    else if (changes.some(x => x[1] === 'build')) sfx.build();
+    else if (changes.some(x => x[1] === 'crash')) sfx.boom();
     diffs.forEach((d, k) => { if (d) floatMoney(k, d); });
-    if (diffs.some(d => d) && !changes.length) (diffs[s.current] < 0 ? sfx.bad : sfx.info)();
+    if (diffs.some(d => d) && !changes.length) (diffs[old.current] < 0 ? sfx.pay : sfx.coin)();
     if (changes.length || diffs.some(d => d)) await wait(PACE.settle + 300);
     if (it.turnChanged && s.phase !== 'over') await turnBanner(s);
   }
@@ -626,9 +656,10 @@ import { createBoard3D } from './board3d.js';
         <div class="face front"><div class="big">${chance ? '❓' : '🔮'}</div><div class="ttl">${f.title}</div></div>
         <div class="face back"><div class="ttl">${f.title}</div><div class="big">${f.tone === 'bad' ? '😱' : f.tone === 'good' ? '🤑' : '🎲'}</div><div class="hint">${esc(who)}</div><div class="txt">${esc(what)}</div></div>
       </div></div>`);
-      sfx.info();
+      sfx.whoosh();
       await stageWait(650);
       $('#stage .ev-card') && $('#stage .ev-card').classList.add('open');
+      sfx.whoosh();
       (sfx[f.tone] || sfx.info)();
       await stageWait(total - 650);
     } else if (kind === 'news') {
@@ -640,7 +671,7 @@ import { createBoard3D } from './board3d.js';
       const faces = E.WHEEL_FACES, n = faces.length, seg = 360 / n;
       const colors = ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#da77f2', '#ffa94d'];
       const grad = faces.map((_, i) => `${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
-      const spans = faces.map((x, i) => `<span style="transform: translate(-50%,-50%) rotate(${i * seg + seg / 2}deg) translateY(-17cqw)">${x.emoji}</span>`).join('');
+      const spans = faces.map((x, i) => `<span style="transform: translate(-50%,-50%) rotate(${i * seg + seg / 2}deg) translateY(-17cqmin)">${x.emoji}</span>`).join('');
       showStage(`<div><div class="wheel-wrap"><div class="wheel-pointer">🔻</div><div class="wheel" style="background:conic-gradient(${grad})">${spans}</div><div class="wheel-hub">🎡</div></div>
         <div class="wheel-result">${esc(who)}：${esc(what)}</div></div>`);
       const face = f.extra && f.extra.face >= 0 ? f.extra.face : 0;
@@ -648,9 +679,10 @@ import { createBoard3D } from './board3d.js';
       wheel.style.transitionDuration = (2.6 * speedMul()) + 's';
       await sleep(60);
       wheel.style.transform = `rotate(${360 * 5 - (face * seg + seg / 2)}deg)`;
-      const ticker = setInterval(() => sfx.step(), 120);
+      let alive = true;
+      (async () => { let gap = 45; while (alive && gap < 400) { sfx.tick(); await sleep(gap * speedMul()); gap *= 1.07; } })();
       await stageWait(2700);
-      clearInterval(ticker);
+      alive = false;
       const res = $('#stage .wheel-result');
       if (res) res.classList.add('show');
       (sfx[f.tone] || sfx.info)();
@@ -669,7 +701,9 @@ import { createBoard3D } from './board3d.js';
       // god / item / big
       const glow = f.tone === 'good' ? '#8dffb1' : f.tone === 'bad' ? '#ff6b6b' : '#ffe066';
       showStage(`<div class="ev-pop ${f.tone} ${kind === 'item' ? 'small' : ''}" style="--glow:${glow}"><div class="big">${f.emoji}</div><div class="ttl">${esc(f.title)}</div><div class="txt">${esc(f.text)}</div></div>`);
-      (sfx[f.tone] || sfx.info)();
+      if (['轰！', '导弹', '怪兽卡', '恶魔卡'].includes(f.title)) sfx.boom();
+      else if (f.title === '游戏结束') sfx.win();
+      else (sfx[f.tone] || sfx.info)();
       await stageWait(total);
     }
     hideStage();
@@ -1046,7 +1080,7 @@ import { createBoard3D } from './board3d.js';
       <div class="row"><button class="btn big" data-leave>离开道具店</button></div>`);
     $('#modalBody').onclick = e => {
       const b = e.target.closest('[data-buy]');
-      if (b) { sfx.good(); send({ type: 'shopBuy', card: b.dataset.buy }); }
+      if (b) { sfx.coin(); send({ type: 'shopBuy', card: b.dataset.buy }); }
       if (e.target.closest('[data-leave]')) { closeModal(); send({ type: 'skip' }); }
     };
   }
@@ -1113,7 +1147,7 @@ import { createBoard3D } from './board3d.js';
   }
 
   // ---------- 顶部按钮 ----------
-  $('#soundBtn').onclick = () => { soundOn = !soundOn; store.set('mono.sound', soundOn); renderLive(); if (soundOn) sfx.info(); };
+  $('#soundBtn').onclick = () => { soundOn = !soundOn; setSoundEnabled(soundOn); store.set('mono.sound', soundOn); renderLive(); if (soundOn) sfx.coin(); };
   $('#viewBtn').onclick = () => {
     if (!board) return;
     const m = board.viewMode === 'follow' ? 'overview' : 'follow';
@@ -1129,11 +1163,24 @@ import { createBoard3D } from './board3d.js';
     const s = ctrl.state;
     openModal('menu', `<h2>☰ 菜单</h2>
       ${ctrl.mode === 'online' ? `<p>房间号：<span class="room-code">${ctrl.room.id}</span></p>` : '<p class="hint">单机进度会自动保存，回到主页后可以继续。</p>'}
-      <div class="row"><button class="btn" data-rules>📖 玩法说明</button></div>
+      <div class="row"><button class="btn" data-rules>📖 玩法说明</button><button class="btn" data-sounds>🔊 试听音效</button></div>
       <div class="row">${s.phase !== 'over' && viewer(s) >= 0 && !s.players[viewer(s)].bankrupt ? '<button class="btn" data-resign>🏳️ 认输</button>' : ''}
       <button class="btn primary" data-home>🏠 回到主页${ctrl.mode === 'online' ? '（退出房间）' : ''}</button></div>`);
     $('#modalBody').onclick = e => {
       if (e.target.closest('[data-home]')) { closeModal(); goHome(); }
+      if (e.target.closest('[data-sounds]')) {
+        const list = [['diceShake', '🎲 摇骰子'], ['diceLand', '💥 骰子落桌'], ['diceReveal', '✨ 亮出点数'], ['step', '👣 走一步'], ['buy', '🏷️ 买地'], ['build', '🔨 盖楼'],
+          ['coin', '🪙 收钱'], ['pay', '💸 付过路费'], ['good', '🎉 好事'], ['bad', '😩 坏事'], ['turn', '🔔 换人'], ['whoosh', '🃏 翻牌'], ['tick', '🎡 转盘'], ['boom', '💣 爆炸'], ['win', '🏆 胜利']];
+        openModal('sounds', `<h2>🔊 试听音效</h2><div class="choice-grid">${list.map(([k, n]) => `<button class="btn" data-snd="${k}">${n}</button>`).join('')}</div>
+          <p class="hint">${soundOn ? '' : '⚠️ 音效目前是关闭的，先点右上角的 🔇 打开。'}哪个不好听可以告诉我，我再调。</p>`);
+        $('#modalBody').onclick = ev => {
+          const b = ev.target.closest('[data-snd]');
+          if (!b) return;
+          if (b.dataset.snd === 'diceShake') { sfx.diceShake(700); setTimeout(() => sfx.diceLand(), 700); setTimeout(() => sfx.diceBounce(), 1000); }
+          else sfx[b.dataset.snd]();
+        };
+        return;
+      }
       if (e.target.closest('[data-resign]') && confirm('确定认输吗？你的地产会收归银行。')) { closeModal(); send({ type: 'resign' }); }
       if (e.target.closest('[data-rules]')) openModal('rules', `<h2>📖 玩法说明</h2>${$('.rules ul').outerHTML}
         <h3>角色</h3><ul>${CHAR_KEYS.map(k => `<li>${CHARACTERS[k].emoji} <b>${CHARACTERS[k].name}</b>：${CHARACTERS[k].skill}</li>`).join('')}</ul>
