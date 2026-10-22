@@ -497,6 +497,7 @@ export function createBoard3D(container, E, opts = {}) {
 
   // ---------- 选格高亮、岔路箭头、特效 ----------
   let selectable = null;
+  let highlight = null;
   let forkArrows = [];
   let onFork = null;
   function setFork(options, from, cb) {
@@ -605,6 +606,7 @@ export function createBoard3D(container, E, opts = {}) {
     forkArrows.forEach(a => { a.position.y = a.userData.base.y + Math.abs(Math.sin(clock.t * 4)) * 0.35; });
     tiles.forEach((t, i) => {
       if (selectable && selectable.has(i)) { t.glow.material.color.set('#ff2d55'); t.glow.material.opacity = 0.35 + Math.sin(clock.t * 6) * 0.2; }
+      else if (highlight && highlight.has(i)) { t.glow.material.color.set('#ffc400'); t.glow.material.opacity = 0.45 + Math.sin(clock.t * 5) * 0.2; }
       else if (t.trail > 0) { t.trail = Math.max(0, t.trail - dt * 0.8); t.glow.material.opacity = t.trail * 0.55; }
       else t.glow.material.opacity = 0;
     });
@@ -640,6 +642,7 @@ export function createBoard3D(container, E, opts = {}) {
       tiles.forEach(t => { t.key = ''; });
       setFork(null);
       selectable = null;
+      highlight = null;
       pieces.forEach((pc, k) => pc.group.position.copy(pieceTarget(k)));
     },
     // 同步展示状态（不带动画的部分）
@@ -696,6 +699,8 @@ export function createBoard3D(container, E, opts = {}) {
     },
     flash,
     setSelectable(cells) { selectable = cells ? new Set(cells) : null; },
+    // 金色闪烁：预计会停下的格子
+    setHighlight(cells) { highlight = cells && cells.length ? new Set(cells) : null; },
     setFork(options, from, cb) { setFork(options, from, cb); },
     setView(mode) { setView(mode); },
     get viewMode() { return viewMode; },

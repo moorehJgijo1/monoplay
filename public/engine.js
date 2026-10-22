@@ -412,6 +412,23 @@
     recordMove(s, i, [cell], true);
   }
 
+  // 从 pos（上一步在 prev）出发走 steps 步可能停下的格子。后面还有岔路时会有多个结果；
+  // 路障、地雷会让人提前停下。first 表示第一步已经选定往哪走。电脑和界面的落点预览共用这个函数。
+  function landings(s, i, pos, prev, steps, first) {
+    const out = new Set(), ninja = s.players[i].char === 'ninja';
+    const go = (at, from, left, forced) => {
+      let f = forced !== undefined ? [forced] : ADJ[at].filter(n => n !== from);
+      if (!f.length) f = ADJ[at];
+      for (const n of f) {
+        if (left === 1 || (s.obstacles[n] && !ninja)) out.add(n);
+        else go(n, at, left - 1);
+      }
+    };
+    if (steps <= 0) out.add(pos);
+    else go(pos, prev, steps, first);
+    return [...out];
+  }
+
   function nearestOfType(s, i, type) {
     const from = s.players[i].pos;
     return BOARD.map((c, k) => k).filter(k => BOARD[k].type === type).sort((a, b) => DIST[from][a] - DIST[from][b])[0];
@@ -993,7 +1010,7 @@
     BOARD, N, GROUPS, GROUP_CELLS, LANDS, LEVELS, LEVEL_EMOJI, LEVEL_MULT, MAX_LEVEL, MAX_CARDS, JAIL, HOSPITAL,
     CHARACTERS, CHAR_KEYS, GODS, CARDS, CARD_KEYS, PLAYER_COLORS,
     createGame, applyAction, pendingActor, cardTargets,
-    rentFor, netWorth, ownedBy, landValue, upgradeCost, buyPrice, cardPrice, money, dist, forwardOptions,
+    rentFor, netWorth, ownedBy, landValue, upgradeCost, buyPrice, cardPrice, money, dist, forwardOptions, landings,
     MAP_W, MAP_H, ADJ, START,
   };
 });

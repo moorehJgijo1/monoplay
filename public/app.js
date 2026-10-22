@@ -76,6 +76,7 @@ import { createBoard3D } from './board3d.js';
     $('#modal').classList.remove('hidden');
   }
   function closeModal() {
+    if (board) board.setHighlight(defaultHighlight());
     modalKind = null;
     $('#modal').classList.add('hidden');
     $('#modalBody').innerHTML = '';
@@ -721,6 +722,7 @@ import { createBoard3D } from './board3d.js';
     if (board && forkKey !== view.forkKey) {
       view.forkKey = forkKey;
       board.setFork(forkKey ? s.fork.options : null, forkKey ? s.players[me].pos : null, to => send({ type: 'chooseFork', to }));
+      board.setHighlight(defaultHighlight());
     }
     syncModals(s);
   }
@@ -848,9 +850,10 @@ import { createBoard3D } from './board3d.js';
         const btns = f.options.map(o => {
           const c = BOARD[o], dx = c.x - here.x, dz = c.z - here.z;
           const arrow = dz < 0 ? '⬆️' : dz > 0 ? '⬇️' : dx < 0 ? '⬅️' : '➡️';
-          return `<button class="btn gold big" data-act="fork" data-to="${o}">${arrow} ${c.name}</button>`;
+          const ends = E.landings(s, me, p.pos, p.prev, f.left, o);
+          return `<button class="btn fork-btn" data-act="fork" data-to="${o}" data-ends="${ends.join(',')}"><b>${arrow} 往${c.name}方向</b>${ends.length > 1 ? '<small>后面还有岔路，可能停在：</small>' : '<small>会停在：</small>'}${briefHTML(s, me, ends)}</button>`;
         });
-        html = `<h3>🔀 岔路口，往哪走？</h3><p>还要走 <b>${f.left}</b> 步。点下面的按钮，或点地图上的黄色箭头。</p><div class="row">${btns.join('')}</div>`;
+        html = `<h3>🔀 岔路口，往哪走？</h3><p>还要走 <b>${f.left}</b> 步。地图上金色闪烁的是可能停下的格子，也可以直接点黄色箭头。</p><div class="fork-grid">${btns.join('')}</div>`;
         break;
       }
       case 'shop':
@@ -866,6 +869,22 @@ import { createBoard3D } from './board3d.js';
     }
     el.innerHTML = html;
   }
+
+  // 鼠标移到带落点的选项上时，地图上标出这些格子
+  function hoverEnds(e) {
+    const b = e.target.closest('[data-ends]');
+    if (board) board.setHighlight(b ? b.dataset.ends.split(',').map(Number) : defaultHighlight());
+  }
+  function defaultHighlight() {
+    const s = ctrl && ctrl.state;
+    if (!s || !canAct(s) || s.phase !== 'fork' || !s.fork) return null;
+    const me = viewer(s), p = s.players[me];
+    return s.fork.options.flatMap(o => E.landings(s, me, p.pos, p.prev, s.fork.left, o));
+  }
+  $('#actionPanel').addEventListener('mouseover', hoverEnds);
+  $('#actionPanel').addEventListener('mouseleave', hoverEnds);
+  $('#modalBody').addEventListener('mouseover', hoverEnds);
+  $('#modal').addEventListener('mouseleave', hoverEnds);
 
   $('#actionPanel').onclick = e => {
     const b = e.target.closest('[data-act]');
@@ -920,8 +939,12 @@ import { createBoard3D } from './board3d.js';
     const c = CARDS[key], s = ctrl.state;
     if (c.target === 'none') { closeModal(); return send({ type: 'useCard', index }); }
     if (c.target === 'dice') {
-      openModal('target', `<h2>${c.emoji} 想掷出几点？</h2><div class="choice-grid">${targets.map(t => `<button class="btn big" data-t="${t}"><b>${t}</b> 点</button>`).join('')}</div>
-        <p class="hint">遇到岔路口时还可以自己选方向。</p>`);
+      const me = viewer(s), p = s.players[me];
+      openModal('target', `<h2>${c.emoji} 想掷出几点？</h2><div class="dice-pick">${targets.map(t => {
+        const ends = E.landings(s, me, p.pos, p.prev, t);
+        return `<button class="btn" data-t="${t}" data-ends="${ends.join(',')}"><b>${t} 点</b>${briefHTML(s, me, ends)}</button>`;
+      }).join('')}</div>
+        <p class="hint">有多个结果的，是因为途中有岔路口，到时候可以自己选。鼠标移到选项上，地图会标出落点。</p>`);
     } else if (c.target === 'player') {
       openModal('target', `<h2>${c.emoji} 选择目标</h2><div class="choice-grid">${targets.map(id => {
         const p = s.players.find(x => x.id === id);
@@ -944,6 +967,28 @@ import { createBoard3D } from './board3d.js';
     };
   }
   $('#cancelSelect').onclick = () => { selectMode = null; $('#selectBanner').classList.add('hidden'); boardSync(); };
+
+  // 一句话说明停在某格会发生什么（给选路、遥控骰子做预览）
+  function cellBrief(s, me, c) {
+    const cell = BOARD[c], p = s.players[me];
+    if (s.obstacles[c] && p.char !== 'ninja') return s.obstacles[c] === 'mine' ? ['💣 地雷！会住院', 'bad'] : ['🚧 路障，会被拦下', 'info'];
+    const god = s.gods[c] ? ` · ${GODS[s.gods[c]].emoji}${GODS[s.gods[c]].name}` : '';
+    if (cell.type === 'land') {
+      const ld = s.lands[c];
+      if (ld.owner === null) return [`空地 ${money(E.buyPrice(s, me, c))}${god}`, 'good'];
+      if (ld.owner === me) return [`自己的地${ld.level < E.MAX_LEVEL ? '，可盖楼' : ''}${god}`, 'good'];
+      const o = s.players[ld.owner];
+      if (o.stay > 0) return [`${o.name}的地，地主不在${god}`, 'good'];
+      return [`${o.name}的地，过路费 ${money(E.rentFor(s, c) * (p.god && p.god.key === 'shuai' ? 2 : 1))}${god}`, 'bad'];
+    }
+    const tone = { police: 'bad', tax: 'bad', shop: 'good', points: 'good', park: 'good', wheel: 'good' }[cell.type] || 'info';
+    return [`${CELL_ICONS[cell.type]}${cell.name}${god}`, tone];
+  }
+  const briefHTML = (s, me, cells) => cells.slice(0, 3).map(c => {
+    const [txt, tone] = cellBrief(s, me, c);
+    const named = BOARD[c].type === 'land' || (s.obstacles[c] && s.players[me].char !== 'ninja');
+    return `<span class="land-note ${tone}">${named ? BOARD[c].name + '：' : ''}${esc(txt)}</span>`;
+  }).join('') + (cells.length > 3 ? `<span class="land-note">……共 ${cells.length} 种可能</span>` : '');
 
   function onCellClick(i) {
     if (selectMode) {

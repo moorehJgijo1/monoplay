@@ -47,15 +47,7 @@
     }
   }
 
-  // 从 pos（上一步在 prev）出发恰好走 steps 步能到的所有格子；岔路口电脑可以自己选
-  function endpoints(pos, prev, steps, out = new Set()) {
-    if (steps === 0) { out.add(pos); return out; }
-    let f = E.ADJ[pos].filter(n => n !== prev);
-    if (!f.length) f = E.ADJ[pos];
-    f.forEach(n => endpoints(n, pos, steps - 1, out));
-    return out;
-  }
-  const bestLanding = (s, i, pos, prev, steps) => Math.max(...[...endpoints(pos, prev, steps)].map(c => cellScore(s, i, c)));
+  const bestLanding = (s, i, pos, prev, steps, first) => Math.max(...E.landings(s, i, pos, prev, steps, first).map(c => cellScore(s, i, c)));
   // 掷两颗骰子时，按概率加权的落点好坏
   function expectedRoll(s, i, pos, prev) {
     let v = 0;
@@ -186,7 +178,7 @@
         const { options, left } = s.fork;
         let best = options[0], bestV = -Infinity;
         options.forEach(o => {
-          const v = bestLanding(s, i, o, p.pos, left - 1);
+          const v = bestLanding(s, i, p.pos, p.prev, left, o);
           if (v > bestV) { bestV = v; best = o; }
         });
         return { type: 'chooseFork', to: best };
