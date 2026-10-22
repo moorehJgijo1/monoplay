@@ -202,7 +202,7 @@
           const p = s.players[a];
           if (!p.isBot && !p.auto) break;
           await animIdle();
-          await sleep(650);
+          await sleep(E.PACE.think * SPEEDS[speedIdx].mul);
           if (ctrl !== this || E.pendingActor(s) !== a) continue;
           const action = AI.decide(s, p.id);
           if (!action) break;
@@ -404,22 +404,39 @@
   // =====================================================================
   // 游戏界面
   // =====================================================================
-  const view = { dispPos: null, moveSeq: 0, fxSeq: 0, diceSeq: 0, logSeq: 0, queue: [], animating: false, idleWaiters: [], pendingFx: [] };
+  const { PACE } = E;
+  const SPEEDS = [{ key: 'slow', label: '🐢 慢速', mul: 1.4 }, { key: 'normal', label: '⏩ 中速', mul: 1 }, { key: 'fast', label: '⚡ 快速', mul: 0.55 }];
+  let speedIdx = Math.max(0, SPEEDS.findIndex(x => x.key === store.get('mono.speed', 'normal')));
+
+  // shown：界面当前展示的状态（动画播完才更新）；pos：棋子当前所在格
+  const view = { gen: 0, shown: null, mark: null, pos: [], queue: [], animating: false, idleWaiters: [], skipStage: null, cash: [], dice: null, logSeq: 0, overShown: null };
   let selectMode = null;
   let dismissedVisit = null;
   const visitKey = () => ctrl && ctrl.state ? `${ctrl.state.turn}-${ctrl.state.phase}` : '';
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const shortMoney = n => n >= 10000 ? '¥' + (n / 10000).toFixed(1).replace(/\.0$/, '') + '万' : money(n);
+  // 联机时动画积压太多就加速追上
+  const speedMul = () => (view.queue.length > 8 ? Math.min(SPEEDS[speedIdx].mul, 0.35) : SPEEDS[speedIdx].mul);
+  const wait = ms => sleep(ms * speedMul());
 
   function resetView() {
-    Object.assign(view, { dispPos: null, moveSeq: 0, fxSeq: 0, diceSeq: 0, logSeq: 0, queue: [], animating: false, pendingFx: [] });
+    view.gen++;
+    Object.assign(view, { shown: null, mark: null, pos: [], queue: [], animating: false, cash: [], dice: null, logSeq: 0, overShown: null });
+    if (view.skipStage) view.skipStage();
     view.idleWaiters.splice(0).forEach(r => r());
     selectMode = null;
+    $('#selectBanner').classList.add('hidden');
+    hideStage();
     closeModal();
+    $('#pieces').innerHTML = '';
+    pieceEls = [];
   }
 
   function animIdle() {
     return view.animating || view.queue.length ? new Promise(r => view.idleWaiters.push(r)) : Promise.resolve();
   }
 
+  // ---------- 棋盘 ----------
   // 棋盘格子坐标（11×11 外圈，0 在右下角，逆时针排布）
   function gridPos(i) {
     if (i <= 10) return [11, 11 - i];
@@ -434,134 +451,330 @@
       const el = document.createElement('div');
       const [r, col] = gridPos(i);
       el.style.gridArea = `${r} / ${col}`;
-      el.className = 'cell' + (c.type === 'land' ? ' land' : ' special') + (i % 10 === 0 ? ' corner' : '');
+      el.className = `cell t-${c.type} ${c.type === 'land' ? 'land' : 'special'}${i % 10 === 0 ? ' corner' : ''}`;
       el.dataset.cell = i;
       if (c.type === 'land') el.style.setProperty('--g', GROUPS[c.group].color);
-      board.appendChild(el);
+      board.insertBefore(el, $('#pieces'));
       cellEls.push(el);
     });
     board.onclick = e => {
       const el = e.target.closest('.cell');
       if (el) onCellClick(Number(el.dataset.cell));
     };
+    if (window.ResizeObserver) new ResizeObserver(() => layoutPieces(true)).observe(board);
   })();
 
   function renderBoard(s) {
-    const cur = s.players[s.current];
     BOARD.forEach((c, i) => {
       const el = cellEls[i];
-      let html = '';
       const marks = [];
       if (s.obstacles[i]) marks.push(s.obstacles[i] === 'mine' ? '💣' : '🚧');
       if (s.gods[i]) marks.push(`<span class="god" title="${GODS[s.gods[i]].name}">${GODS[s.gods[i]].emoji}</span>`);
+      let html;
       if (c.type === 'land') {
-        const ld = s.lands[i];
-        const owner = ld.owner !== null ? s.players[ld.owner] : null;
-        html = `<div class="band"></div><div class="nm">${c.name}</div>
-          <div class="lvl">${LEVEL_EMOJI[ld.level] || ''}</div>
-          <div class="sub">${owner ? money(E.rentFor(s, i)) : money(c.price)}</div>`;
+        const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
+        html = `<div class="band">${c.name}</div><div class="bld">${LEVEL_EMOJI[ld.level] || ''}</div>`
+          + (owner ? `<div class="pips">${[1, 2, 3, 4, 5].map(L => `<i class="${ld.level >= L ? 'on' : ''}"></i>`).join('')}</div>` : '')
+          + `<div class="price">${owner ? shortMoney(E.rentFor(s, i)) : money(c.price)}</div>`
+          + (owner ? `<div class="flag">${CHARACTERS[owner.char].emoji}</div>` : '');
         el.classList.toggle('owned', !!owner);
         if (owner) el.style.setProperty('--owner', owner.color);
       } else {
         html = `<div class="icon">${CELL_ICONS[c.type]}</div><div class="nm">${c.name}</div>`;
       }
-      html += `<div class="marks">${marks.join('')}</div><div class="tokens"></div>`;
-      el.innerHTML = html;
+      html += `<div class="marks">${marks.join('')}</div>`;
+      if (el._html !== html) { el.innerHTML = html; el._html = html; }
       el.classList.toggle('selectable', !!(selectMode && selectMode.targets.includes(i)));
-      el.classList.toggle('here', s.phase !== 'over' && cur.pos === i && !view.animating);
     });
-    renderTokens(s);
   }
 
-  function renderTokens(s) {
-    cellEls.forEach(el => { const t = el.querySelector('.tokens'); if (t) t.innerHTML = ''; });
-    s.players.forEach((p, k) => {
-      if (p.bankrupt) return;
-      const pos = view.dispPos ? view.dispPos[k] : p.pos;
-      const t = cellEls[pos].querySelector('.tokens');
+  function flashCell(i, cls, color) {
+    const el = cellEls[i];
+    if (color) { el.style.setProperty('--pc', color); el.style.setProperty('--owner', color); }
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    clearTimeout(el['_t' + cls]);
+    el['_t' + cls] = setTimeout(() => el.classList.remove(cls), 1700);
+  }
+
+  // ---------- 棋子 ----------
+  let pieceEls = [];
+  const OFFSETS = {
+    1: [[0, 0]],
+    2: [[-0.2, 0], [0.2, 0]],
+    3: [[-0.2, -0.12], [0.2, -0.12], [0, 0.2]],
+    4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.2], [0.2, 0.2]],
+    5: [[-0.25, -0.15], [0, -0.15], [0.25, -0.15], [-0.13, 0.2], [0.13, 0.2]],
+    6: [[-0.25, -0.15], [0, -0.15], [0.25, -0.15], [-0.25, 0.2], [0, 0.2], [0.25, 0.2]],
+  };
+  function ensurePieces(s) {
+    if (pieceEls.length === s.players.length) return;
+    $('#pieces').innerHTML = '';
+    pieceEls = s.players.map(p => {
       const el = document.createElement('div');
-      el.className = 'token' + (k === s.current && s.phase !== 'over' ? ' active' : '');
+      el.className = 'piece';
       el.style.setProperty('--pc', p.color);
-      el.title = p.name;
-      el.textContent = CHARACTERS[p.char].emoji;
-      t.appendChild(el);
+      el.innerHTML = `<div class="shadow"></div><div class="body">${CHARACTERS[p.char].emoji}</div><div class="tag">${esc(p.name)}</div>`;
+      $('#pieces').appendChild(el);
+      return el;
     });
   }
+  function piecePoint(k) {
+    const s = view.shown, cell = view.pos[k];
+    const same = s.players.map((p, j) => j).filter(j => !s.players[j].bankrupt && view.pos[j] === cell);
+    const off = (OFFSETS[same.length] || OFFSETS[6])[Math.max(0, same.indexOf(k))] || [0, 0];
+    const el = cellEls[cell];
+    return [el.offsetLeft + el.offsetWidth * (0.5 + off[0]), el.offsetTop + el.offsetHeight * (0.58 + off[1])];
+  }
+  function layoutPieces(instant) {
+    const s = view.shown;
+    if (!s) return;
+    ensurePieces(s);
+    const live = ctrl && ctrl.state, actor = live ? E.pendingActor(live) : null;
+    s.players.forEach((p, k) => {
+      const el = pieceEls[k];
+      if (p.bankrupt) { el.style.display = 'none'; return; }
+      el.style.display = '';
+      const [x, y] = piecePoint(k);
+      if (instant) el.style.transition = 'none';
+      el.style.transform = `translate(${x}px, ${y}px)`;
+      if (instant) { void el.offsetWidth; el.style.transition = ''; }
+      el.classList.toggle('active', k === s.current && s.phase !== 'over');
+      el.classList.toggle('dim', p.stay > 0);
+      const thinking = !view.animating && actor === k && live && (live.players[k].isBot || live.players[k].auto);
+      let b = el.querySelector('.bubble');
+      if (thinking && !b) { b = document.createElement('div'); b.className = 'bubble'; b.textContent = '💭'; el.appendChild(b); }
+      if (!thinking && b) b.remove();
+    });
+  }
+  function hop(k) {
+    const el = pieceEls[k];
+    el.classList.remove('hop');
+    void el.offsetWidth;
+    el.classList.add('hop');
+  }
+  function floatMoney(k, d) {
+    if (!pieceEls[k] || view.shown.players[k].bankrupt) return;
+    const [x, y] = piecePoint(k);
+    const el = document.createElement('div');
+    el.className = 'floater ' + (d > 0 ? 'plus' : 'minus');
+    el.textContent = (d > 0 ? '+' : '−') + money(Math.abs(d));
+    el.style.left = x + 'px';
+    el.style.top = (y - cellEls[0].offsetHeight * 0.25) + 'px';
+    $('#pieces').appendChild(el);
+    setTimeout(() => el.remove(), 2100);
+  }
 
-  // 新状态到达：排队播放移动动画、骰子动画和特效提示
+  // ---------- 骰子 ----------
+  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const dieHTML = (v, cls = '') => `<div class="die ${cls} ${v === 1 || v === 4 ? 'red' : ''}">${Array.from({ length: 9 }, (_, i) => `<i class="${PIPS[v].includes(i) ? 'on' : ''}"></i>`).join('')}</div>`;
+  const rnd6 = () => 1 + Math.floor(Math.random() * 6);
+  async function rollDiceInto(box, final, ms) {
+    sfx.dice();
+    const end = Date.now() + ms * speedMul();
+    while (Date.now() < end) {
+      box.innerHTML = final.map(() => dieHTML(rnd6(), 'rolling')).join('');
+      await sleep(90);
+    }
+    box.innerHTML = final.map(v => dieHTML(v, 'land')).join('');
+  }
+
+  // ---------- 状态到达：排队播放动画 ----------
   function onState() {
     const s = ctrl && ctrl.state;
     if (!s) return;
-    if (!view.dispPos) {
-      view.dispPos = s.players.map(p => p.pos);
-      view.moveSeq = s.moves.length ? s.moves[s.moves.length - 1].n : 0;
-      view.fxSeq = s.fx.length ? s.fx[s.fx.length - 1].n : 0;
-      view.diceSeq = s.diceSeq || 0;
-      view.turnSeen = s.turn;
+    if (!view.shown) {
+      view.shown = clone(s);
+      view.mark = E.paceMark(s);
+      view.pos = s.players.map(p => p.pos);
+      view.cash = s.players.map(p => p.cash);
+      view.dice = s.dice;
+      renderAll();
+      return;
     }
-    if ((s.diceSeq || 0) !== view.diceSeq) {
-      view.diceSeq = s.diceSeq || 0;
-      view.queue.push({ dice: s.dice });
-    }
-    s.moves.filter(m => m.n > view.moveSeq).forEach(m => view.queue.push({ move: m }));
-    if (s.moves.length) view.moveSeq = Math.max(view.moveSeq, s.moves[s.moves.length - 1].n);
-    s.fx.filter(f => f.n > view.fxSeq).forEach(f => view.queue.push({ fx: f }));
-    if (s.fx.length) view.fxSeq = Math.max(view.fxSeq, s.fx[s.fx.length - 1].n);
-    view.queue.push({ sync: true });
-    if (view.turnSeen !== s.turn) {
-      view.turnSeen = s.turn;
-      const a = E.pendingActor(s);
-      if (a !== null && s.players[a].id === ctrl.you() && !s.players[a].isBot) view.queue.push({ myTurn: true });
-    }
-    render();
+    const items = [];
+    if ((s.diceSeq || 0) !== view.mark.dice && s.dice) items.push({ n: s.diceN || 0, dice: s.dice.slice() });
+    s.moves.forEach(m => { if (m.n > view.mark.seq) items.push({ n: m.n, move: m }); });
+    s.fx.forEach(f => { if (f.n > view.mark.seq) items.push({ n: f.n, fx: f }); });
+    items.sort((a, b) => a.n - b.n);
+    const turnChanged = s.turn !== view.mark.turn;
+    view.mark = E.paceMark(s);
+    view.queue.push(...items, { sync: clone(s), turnChanged });
     playQueue();
   }
 
   async function playQueue() {
     if (view.animating) return;
     view.animating = true;
-    while (view.queue.length) {
-      const item = view.queue.shift();
-      const s = ctrl && ctrl.state;
-      if (!s) break;
-      if (item.dice) await animateDice(item.dice);
-      else if (item.move) {
-        const m = item.move, k = m.player;
-        if (m.jump) { view.dispPos[k] = m.path[m.path.length - 1]; renderTokens(s); await sleep(250); }
-        else for (const c of m.path) { view.dispPos[k] = c; renderTokens(s); sfx.step(); await sleep(170); }
-      } else if (item.fx) {
-        const f = item.fx;
-        toast(f.emoji, f.title, f.text, f.tone);
-        (sfx[f.tone] || sfx.info)();
-        await sleep(350);
-      } else if (item.sync) {
-        view.dispPos = s.players.map(p => p.pos);
-      } else if (item.myTurn) {
-        sfx.turn();
-      }
+    const gen = view.gen;
+    renderLive();
+    layoutPieces();
+    while (view.queue.length && gen === view.gen) {
+      const it = view.queue.shift();
+      try {
+        if (it.dice) await playDice(it.dice);
+        else if (it.move) await playMove(it.move);
+        else if (it.fx) await playFx(it.fx);
+        else if (it.sync) await applySync(it);
+      } catch (e) { console.error(e); }
     }
+    if (gen !== view.gen) return;
     view.animating = false;
-    if (ctrl && ctrl.state) render();
+    renderAll();
     view.idleWaiters.splice(0).forEach(r => r());
   }
 
-  async function animateDice(d) {
-    const box = $('#dice');
-    box.innerHTML = '<span class="die rolling">?</span><span class="die rolling">?</span>';
-    sfx.dice();
-    const dies = box.querySelectorAll('.die');
-    for (let k = 0; k < 6; k++) {
-      dies.forEach(x => { x.textContent = 1 + Math.floor(Math.random() * 6); });
-      await sleep(70);
-    }
-    renderDice(d);
-    await sleep(200);
-  }
-  function renderDice(d) {
-    $('#dice').innerHTML = d ? d.map(x => `<span class="die">${x}</span>`).join('') : '<span class="die">🎲</span>';
+  async function playDice(d) {
+    await rollDiceInto($('#dice'), d, PACE.dice * 0.75);
+    view.dice = d;
+    await wait(PACE.dice * 0.25);
   }
 
-  // ---------- 主渲染 ----------
+  async function playMove(m) {
+    const k = m.player, p = view.shown.players[k];
+    if (m.jump) {
+      view.pos[k] = m.path[m.path.length - 1];
+      layoutPieces();
+      sfx.info();
+      await wait(PACE.jump);
+    } else {
+      for (const c of m.path) {
+        view.pos[k] = c;
+        layoutPieces();
+        hop(k);
+        flashCell(c, 'trail', p.color);
+        sfx.step();
+        await wait(PACE.step);
+      }
+    }
+    flashCell(view.pos[k], 'landed', p.color);
+    renderPlayers(view.shown);
+  }
+
+  async function applySync(it) {
+    const old = view.shown, s = it.sync;
+    const changes = [];
+    E.LANDS.forEach(c => {
+      const a = old.lands[c], b = s.lands[c];
+      if (b.owner !== null && a.owner !== b.owner) changes.push([c, 'stamp', s.players[b.owner].color]);
+      else if (b.level > a.level) changes.push([c, 'build']);
+      else if (b.level < a.level) changes.push([c, 'crash']);
+    });
+    const diffs = s.players.map((p, k) => (old.players[k] ? p.cash - old.players[k].cash : 0));
+    view.shown = s;
+    view.pos = s.players.map(p => p.pos);
+    renderAll();
+    changes.forEach(([c, cls, color]) => flashCell(c, cls, color));
+    if (changes.some(x => x[1] === 'stamp')) sfx.good();
+    else if (changes.some(x => x[1] === 'build')) sfx.good();
+    else if (changes.some(x => x[1] === 'crash')) sfx.bad();
+    diffs.forEach((d, k) => { if (d) floatMoney(k, d); });
+    if (diffs.some(d => d) && !changes.length) (diffs[s.current] < 0 ? sfx.bad : sfx.info)();
+    if (changes.length || diffs.some(d => d)) await wait(PACE.settle + 300);
+    if (it.turnChanged && s.phase !== 'over') await turnBanner(s);
+  }
+
+  // ---------- 中央事件舞台 ----------
+  function showStage(html) {
+    const st = $('#stage');
+    st.innerHTML = html + '<div class="skip">点击跳过 ▸</div>';
+    st.classList.remove('hidden');
+  }
+  function hideStage() {
+    $('#stage').classList.add('hidden');
+    $('#stage').innerHTML = '';
+  }
+  function stageWait(ms) {
+    return new Promise(res => {
+      let done = false;
+      const fin = () => { if (done) return; done = true; clearTimeout(t); view.skipStage = null; res(); };
+      const t = setTimeout(fin, ms * speedMul());
+      view.skipStage = fin;
+    });
+  }
+  $('#stage').onclick = () => view.skipStage && view.skipStage();
+
+  // 把“名字：内容”拆开
+  function splitText(f) {
+    const k = f.text.indexOf('：');
+    return k > 0 ? [f.text.slice(0, k), f.text.slice(k + 1)] : ['', f.text];
+  }
+
+  async function playFx(f) {
+    const kind = E.fxKind(f);
+    if (kind === 'toast') {
+      toast(f.emoji, f.title, f.text, f.tone);
+      (sfx[f.tone] || sfx.info)();
+      return wait(PACE.toast);
+    }
+    const [who, what] = splitText(f);
+    const total = PACE[kind];
+    if (kind === 'card') {
+      const chance = f.title === '机会';
+      showStage(`<div class="ev-card" style="--c1:${chance ? '#ffb340' : '#b388ff'};--c2:${chance ? '#e8452c' : '#6a3fd1'}"><div class="flip">
+        <div class="face front"><div class="big">${chance ? '❓' : '🔮'}</div><div class="ttl">${f.title}</div></div>
+        <div class="face back"><div class="ttl">${f.title}</div><div class="big">${f.tone === 'bad' ? '😱' : f.tone === 'good' ? '🤑' : '🎲'}</div><div class="hint">${esc(who)}</div><div class="txt">${esc(what)}</div></div>
+      </div></div>`);
+      sfx.info();
+      await stageWait(650);
+      $('#stage .ev-card') && $('#stage .ev-card').classList.add('open');
+      (sfx[f.tone] || sfx.info)();
+      await stageWait(total - 650);
+    } else if (kind === 'news') {
+      const r = view.shown ? view.shown.round : '';
+      showStage(`<div class="ev-news"><div class="mast">欢乐城日报</div><div class="date"><span>第 ${r} 回合</span><span>号外！号外！</span></div><div class="head">${esc(f.text)}</div></div>`);
+      sfx.turn();
+      await stageWait(total);
+    } else if (kind === 'wheel') {
+      const faces = E.WHEEL_FACES, n = faces.length, seg = 360 / n;
+      const colors = ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#da77f2', '#ffa94d'];
+      const grad = faces.map((_, i) => `${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
+      const spans = faces.map((x, i) => `<span style="transform: translate(-50%,-50%) rotate(${i * seg + seg / 2}deg) translateY(-17cqw)">${x.emoji}</span>`).join('');
+      showStage(`<div><div class="wheel-wrap"><div class="wheel-pointer">🔻</div><div class="wheel" style="background:conic-gradient(${grad})">${spans}</div><div class="wheel-hub">🎡</div></div>
+        <div class="wheel-result">${esc(who)}：${esc(what)}</div></div>`);
+      const face = f.extra && f.extra.face >= 0 ? f.extra.face : 0;
+      const wheel = $('#stage .wheel');
+      wheel.style.transitionDuration = (2.6 * speedMul()) + 's';
+      await sleep(60);
+      wheel.style.transform = `rotate(${360 * 5 - (face * seg + seg / 2)}deg)`;
+      const ticker = setInterval(() => sfx.step(), 120);
+      await stageWait(2700);
+      clearInterval(ticker);
+      const res = $('#stage .wheel-result');
+      if (res) res.classList.add('show');
+      (sfx[f.tone] || sfx.info)();
+      await stageWait(total - 2700);
+    } else if (kind === 'casino') {
+      const x = f.extra || {};
+      const won = f.tone === 'good';
+      showStage(`<div class="casino-box"><div class="ttl">🎰 押大小</div><div class="bet">${esc(who)} 押 <b>${x.big ? '大' : '小'}</b> ${money(x.amt || 0)}</div>
+        <div class="dice" id="casinoDice"></div><div class="res">${won ? '🎉 赢了！' : '💸 输了……'}</div></div>`);
+      if (x.dice) await rollDiceInto($('#casinoDice'), x.dice, 1300);
+      const res = $('#stage .res');
+      if (res) res.classList.add('show');
+      (won ? sfx.good : sfx.bad)();
+      await stageWait(total - 1300);
+    } else {
+      // god / item / big
+      const glow = f.tone === 'good' ? '#8dffb1' : f.tone === 'bad' ? '#ff6b6b' : '#ffe066';
+      showStage(`<div class="ev-pop ${f.tone} ${kind === 'item' ? 'small' : ''}" style="--glow:${glow}"><div class="big">${f.emoji}</div><div class="ttl">${esc(f.title)}</div><div class="txt">${esc(f.text)}</div></div>`);
+      (sfx[f.tone] || sfx.info)();
+      await stageWait(total);
+    }
+    hideStage();
+  }
+
+  async function turnBanner(s) {
+    const p = s.players[s.current];
+    const mine = p.id === ctrl.you() && !p.isBot;
+    showStage(`<div class="ev-turn" style="--pc:${p.color}"><span class="em">${CHARACTERS[p.char].emoji}</span>${mine ? '轮到你了！' : `轮到 ${esc(p.name)}`}</div>`);
+    sfx.turn();
+    await stageWait(PACE.turn);
+    hideStage();
+  }
+
+  // ---------- 渲染 ----------
   function viewer(s) {
     const id = ctrl.you();
     return s.players.findIndex(p => p.id === id);
@@ -571,52 +784,88 @@
     return a !== null && a === me && !s.players[me].auto && !view.animating;
   }
 
-  function render() {
-    const s = ctrl.state;
-    if (!s) return;
+  function renderAll() {
+    if (!ctrl || !view.shown) return;
+    const s = view.shown;
     renderBoard(s);
-    if (!view.animating) renderDice(s.dice);
-    const cur = s.players[s.current];
-    $('#roundInfo').textContent = s.maxRounds ? `第 ${Math.min(s.round, s.maxRounds)} / ${s.maxRounds} 回合` : `第 ${s.round} 回合`;
-    $('#turnBanner').innerHTML = s.phase === 'over'
-      ? `🏆 ${esc(s.players[s.winner].name)} 获胜！`
-      : `${CHARACTERS[cur.char].emoji} ${esc(cur.name)} 的回合<span class="sub">${PHASE_TEXT[s.phase] || ''}</span>`;
-    $('#centerLog').innerHTML = s.log.slice(-7).map(l => `<div>${esc(l.text)}</div>`).join('');
+    layoutPieces();
+    renderCenter(s);
     renderPlayers(s);
+    renderLog(s);
+    renderLive();
+  }
+  // 依赖实时状态的部分：操作面板、手牌、弹窗
+  function renderLive() {
+    const s = ctrl && ctrl.state;
+    if (!s) return;
     renderActions(s);
     renderHand(s);
-    renderLog(s);
     const me = viewer(s);
     const auto = me >= 0 && s.players[me].auto;
     $('#autoBtn').classList.toggle('on', auto);
     $('#autoBtn').textContent = auto ? '🤖 托管中' : '🤖 托管';
     $('#autoBtn').disabled = me < 0 || s.phase === 'over';
     $('#soundBtn').textContent = soundOn ? '🔊' : '🔇';
+    $('#speedBtn').textContent = SPEEDS[speedIdx].label;
     $('#chatTab').classList.toggle('hidden', ctrl.mode !== 'online');
     syncModals(s);
   }
 
+  function renderCenter(s) {
+    const cur = s.players[s.current];
+    $('#roundInfo').textContent = s.maxRounds ? `第 ${Math.min(s.round, s.maxRounds)} / ${s.maxRounds} 回合` : `第 ${s.round} 回合`;
+    const hero = s.phase === 'over' ? s.players[s.winner] : cur;
+    $('#nowAvatar').style.setProperty('--pc', hero.color);
+    $('#nowAvatar').textContent = CHARACTERS[hero.char].emoji;
+    $('#nowName').textContent = s.phase === 'over' ? `🏆 ${hero.name} 获胜！` : `${hero.name} 的回合`;
+    $('#nowSub').innerHTML = `现金 <b>${money(hero.cash)}</b><br>📍 ${BOARD[hero.pos].name}${statusText(hero) ? ' · ' + statusText(hero) : ''}`;
+    if (!view.animating || !$('#dice .rolling')) $('#dice').innerHTML = (view.dice || [6, 6]).map(v => dieHTML(v)).join('');
+    $('#centerLog').innerHTML = s.log.slice(-4).map(l => `<div>${esc(l.text)}</div>`).join('');
+  }
+
   function statusText(p) {
     const parts = [];
-    if (p.stay > 0) parts.push(p.stayAt === 'jail' ? `🚔 坐牢 ${p.stay} 天` : p.stayAt === 'hospital' ? `🏥 住院 ${p.stay} 天` : `💤 冬眠 ${p.stay} 回合`);
+    if (p.stay > 0) parts.push(p.stayAt === 'jail' ? `🚔坐牢${p.stay}天` : p.stayAt === 'hospital' ? `🏥住院${p.stay}天` : `💤冬眠${p.stay}回合`);
     if (p.god) parts.push(`${GODS[p.god.key].emoji}${GODS[p.god.key].name}×${p.god.turns}`);
     if (p.turtle) parts.push(`🐢×${p.turtle}`);
-    return parts.join(' · ');
+    return parts.join(' ');
   }
 
   function renderPlayers(s) {
-    const me = viewer(s);
+    const me = ctrl.state ? viewer(ctrl.state) : -1;
     const online = ctrl.mode === 'online' && ctrl.room ? Object.fromEntries(ctrl.room.seats.map(x => [x.id, x.online])) : null;
     $('#playersPanel').innerHTML = s.players.map((p, k) => {
       const ch = CHARACTERS[p.char];
       const tags = [k === me ? '你' : '', p.isBot ? '电脑' : '', p.auto ? '托管' : '', online && !p.isBot && !online[p.id] ? '离线' : ''].filter(Boolean);
+      const shownCash = view.cash[k] ?? p.cash;
       return `<div class="pl ${k === s.current && s.phase !== 'over' ? 'cur' : ''} ${p.bankrupt ? 'dead' : ''}" style="--pc:${p.color}" data-player="${k}">
-        <span class="em">${ch.emoji}</span>
+        <span class="av">${ch.emoji}</span>
         <span class="nm">${esc(p.name)} <small>${ch.name}${tags.length ? ' · ' + tags.join(' · ') : ''}</small></span>
-        <span class="cash">${p.bankrupt ? '破产' : money(p.cash)}</span>
-        <span class="meta">${p.dir === 1 ? '↻' : '↺'} 🎟️${p.points} · 🃏${p.cards.length} · 🏠${E.ownedBy(s, k).length} · 总资产 ${money(E.netWorth(s, k))}${statusText(p) ? '<br>' + statusText(p) : ''}</span>
+        <span class="cash" data-cash="${k}">${p.bankrupt ? '破产' : money(shownCash)}</span>
+        <span class="meta"><span>📍${BOARD[view.pos[k] ?? p.pos].name}</span><span>${p.dir === 1 ? '↻顺行' : '↺逆行'}</span><span>🎟️${p.points}</span><span>🃏${p.cards.length}</span><span>🏠${E.ownedBy(s, k).length}</span><span>总资产 ${shortMoney(E.netWorth(s, k))}</span>${statusText(p) ? `<span class="st">${statusText(p)}</span>` : ''}</span>
       </div>`;
     }).join('');
+    s.players.forEach((p, k) => { if (!p.bankrupt && view.cash[k] !== p.cash) countCash(k, p.cash); });
+  }
+
+  // 现金数字滚动到新值
+  function countCash(k, to) {
+    const from = view.cash[k] ?? to;
+    const t0 = performance.now(), dur = 700;
+    const token = (view['cashTok' + k] = {});
+    const step = now => {
+      if (view['cashTok' + k] !== token) return;
+      const t = Math.min(1, (now - t0) / dur), v = Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3)));
+      view.cash[k] = v;
+      const el = document.querySelector(`[data-cash="${k}"]`);
+      if (el) {
+        el.textContent = money(v);
+        el.classList.toggle('up', to > from && t < 1);
+        el.classList.toggle('down', to < from && t < 1);
+      }
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   function renderLog(s) {
@@ -624,27 +873,32 @@
     const last = s.log.length ? s.log[s.log.length - 1].n : 0;
     if (last === view.logSeq) return;
     view.logSeq = last;
-    el.innerHTML = s.log.map(l => `<div>${esc(l.text)}</div>`).join('');
+    el.innerHTML = s.log.map(l => `<div class="${l.text.startsWith('——') || l.text.startsWith('=====') ? 'turn' : ''}">${esc(l.text)}</div>`).join('');
     el.scrollTop = el.scrollHeight;
   }
 
   function renderActions(s) {
     const el = $('#actionPanel');
     const me = viewer(s), cur = s.players[s.current];
-    if (s.phase === 'over') {
+    el.classList.remove('mine');
+    if (s.phase === 'over' && !view.animating) {
       el.innerHTML = `<h3>🏆 游戏结束</h3><p>${esc(s.players[s.winner].name)} 成为了大富翁！</p>
         <div class="row"><button class="btn primary" data-act="ranking">查看排名</button></div>`;
       return;
     }
     if (me >= 0 && s.players[me].bankrupt) {
-      el.innerHTML = `<h3>😵 你已破产</h3><p>你可以继续观战，或者回到主页。</p>`;
+      el.innerHTML = `<h3>😵 你已破产</h3><p>可以继续观战，或者从菜单回到主页。</p>`;
       return;
     }
     if (!canAct(s)) {
-      const waiting = me >= 0 && s.players[me].auto ? '托管中，电脑会替你行动。' : view.animating ? '……' : `等待 ${esc(cur.name)} ${PHASE_TEXT[s.phase] || '行动'}${cur.isBot ? '（电脑思考中）' : ''}`;
-      el.innerHTML = `<h3>${CHARACTERS[cur.char].emoji} ${esc(cur.name)} 的回合</h3><p>${waiting}</p>`;
+      const who = view.shown ? view.shown.players[view.shown.current] : cur;
+      const waiting = me >= 0 && s.players[me].auto ? '托管中，电脑会替你行动。'
+        : view.animating ? `<span class="wait-dots">${esc(who.name)} 行动中</span>`
+          : `<span class="wait-dots">等待 ${esc(cur.name)} ${PHASE_TEXT[s.phase] || '行动'}${cur.isBot ? '（电脑思考中）' : ''}</span>`;
+      el.innerHTML = `<h3>${CHARACTERS[who.char].emoji} ${esc(who.name)} 的回合</h3><p>${waiting}</p>`;
       return;
     }
+    el.classList.add('mine');
     const p = s.players[me], cell = BOARD[p.pos];
     let html = '';
     switch (s.phase) {
@@ -653,22 +907,24 @@
         if (s.forcedDice) notes.push(`🎯 遥控骰子：${s.forcedDice} 点`);
         if (p.turtle) notes.push(`🐢 乌龟状态，只能走 1 步（剩 ${p.turtle} 次）`);
         notes.push(`方向：${p.dir === 1 ? '顺时针 ↻' : '逆时针 ↺'}`);
-        html = `<h3>🎲 轮到你了！</h3><p>${notes.join('<br>')}${p.cards.length ? '<br>掷骰前可以先使用下方的道具卡。' : ''}</p>
-          <div class="row"><button class="btn primary big" data-act="roll">🎲 掷骰子</button></div>`;
+        if (p.cards.length) notes.push('掷骰前可以先使用下方的道具卡');
+        html = `<h3>🎲 轮到你了！</h3><p>${notes.join('<br>')}</p>
+          <div class="row"><button class="btn primary huge" data-act="roll">🎲 掷骰子</button></div>`;
         break;
       }
       case 'buy': {
         const price = E.buyPrice(s, me, p.pos);
         html = `<h3>🏷️ 买下「${cell.name}」？</h3>
-          <p>${GROUPS[cell.group].name}片区 · 价格 <b>${money(price)}</b>${price !== cell.price ? '（阿土伯 8 折）' : ''}<br>你的现金 ${money(p.cash)}</p>
-          <div class="row"><button class="btn primary" data-act="buy">买！</button><button class="btn" data-act="skip">不买</button></div>`;
+          <p><span style="color:${GROUPS[cell.group].color}">■</span> ${GROUPS[cell.group].name}片区 · 价格 <b>${money(price)}</b>${price !== cell.price ? '（阿土伯 8 折）' : ''}<br>
+          买下后基础过路费 ${money(cell.price / 10)}，盖楼后最高可达 ${shortMoney(cell.price / 10 * E.LEVEL_MULT[5])}<br>你的现金 ${money(p.cash)}</p>
+          <div class="row"><button class="btn primary big" data-act="buy">💰 买！</button><button class="btn big" data-act="skip">不买</button></div>`;
         break;
       }
       case 'upgrade': {
         const ld = s.lands[p.pos], cost = E.upgradeCost(p.pos);
         const maxLv = Math.min(E.MAX_LEVEL - ld.level, Math.floor(p.cash / cost));
         const btns = [];
-        for (let k = 1; k <= maxLv; k++) btns.push(`<button class="btn ${k === 1 ? 'primary' : 'gold'}" data-act="upgrade" data-levels="${k}">${k === 1 ? '加盖 1 层' : `盖到${LEVELS[ld.level + k]}`} ${money(cost * k)}</button>`);
+        for (let k = 1; k <= maxLv; k++) btns.push(`<button class="btn ${k === 1 ? 'primary' : 'gold'}" data-act="upgrade" data-levels="${k}">${LEVEL_EMOJI[ld.level + k]} ${k === 1 ? '加盖 1 层' : `盖到${LEVELS[ld.level + k]}`} ${shortMoney(cost * k)}</button>`);
         html = `<h3>🔨 在「${cell.name}」盖楼？</h3>
           <p>现在是${LEVELS[ld.level]} ${LEVEL_EMOJI[ld.level]}，每层 ${money(cost)}，你的现金 ${money(p.cash)}</p>
           <div class="row">${btns.join('')}<button class="btn" data-act="skip">不盖</button></div>`;
@@ -676,11 +932,11 @@
       }
       case 'shop':
         html = `<h3>🏪 道具店</h3><p>你有 ${p.points} 点券。</p>
-          <div class="row"><button class="btn primary" data-act="openShop">逛逛</button><button class="btn" data-act="skip">离开</button></div>`;
+          <div class="row"><button class="btn primary big" data-act="openShop">进去逛逛</button><button class="btn big" data-act="skip">离开</button></div>`;
         break;
       case 'casino':
         html = `<h3>🎰 赌场</h3><p>押大小，赢了翻倍！你的现金 ${money(p.cash)}</p>
-          <div class="row"><button class="btn primary" data-act="openCasino">下注</button><button class="btn" data-act="skip">离开</button></div>`;
+          <div class="row"><button class="btn primary big" data-act="openCasino">下注</button><button class="btn big" data-act="skip">离开</button></div>`;
         break;
       default:
         html = `<p>……</p>`;
@@ -716,7 +972,7 @@
     el.innerHTML = `<div class="hand-title"><span>🃏 我的道具卡（${p.cards.length}/${E.MAX_CARDS}）</span><span>🎟️ ${p.points} 点券</span></div>
       <div class="hand-cards">${p.cards.map((k, idx) => {
         const c = CARDS[k], ok = usable && E.cardTargets(s, me, k);
-        return `<button class="card-chip ${ok ? 'usable' : ''} ${c.target === 'passive' ? 'passive' : ''}" data-card="${idx}" title="${esc(c.desc)}">${c.emoji} ${c.name}</button>`;
+        return `<button class="card-chip ${ok ? 'usable' : ''} ${c.target === 'passive' ? 'passive' : ''}" data-card="${idx}" title="${esc(c.desc)}"><span class="em">${c.emoji}</span>${c.name}</button>`;
       }).join('') || '<span class="hint">还没有道具卡，去道具店看看吧</span>'}</div>`;
   }
 
@@ -740,8 +996,9 @@
     const c = CARDS[key], s = ctrl.state;
     if (c.target === 'none') { closeModal(); return send({ type: 'useCard', index }); }
     if (c.target === 'dice') {
+      const me = s.players[viewer(s)];
       openModal('target', `<h2>${c.emoji} 想掷出几点？</h2><div class="choice-grid">${targets.map(t => {
-        const dest = BOARD[(s.players[viewer(s)].pos + s.players[viewer(s)].dir * t + N) % N];
+        const dest = BOARD[(me.pos + me.dir * t + N) % N];
         return `<button class="btn" data-t="${t}"><b>${t}</b> 点<br><small>${dest.name}</small></button>`;
       }).join('')}</div>`);
     } else if (c.target === 'player') {
@@ -754,7 +1011,7 @@
       selectMode = { index, key, targets };
       $('#selectBanner span').textContent = `${c.emoji} ${c.name}：点击棋盘上闪烁的格子`;
       $('#selectBanner').classList.remove('hidden');
-      render();
+      renderBoard(view.shown);
       return;
     }
     $('#modalBody').onclick = e => {
@@ -765,7 +1022,7 @@
       send({ type: 'useCard', index, target: c.target === 'dice' ? Number(b.dataset.t) : b.dataset.t });
     };
   }
-  $('#cancelSelect').onclick = () => { selectMode = null; $('#selectBanner').classList.add('hidden'); render(); };
+  $('#cancelSelect').onclick = () => { selectMode = null; $('#selectBanner').classList.add('hidden'); renderBoard(view.shown); };
 
   function onCellClick(i) {
     if (selectMode) {
@@ -788,7 +1045,7 @@
     const rows = LEVELS.map((name, L) => `<tr class="${owner && L === ld.level ? 'now' : ''}"><td>${LEVEL_EMOJI[L] || '🟩'} ${name}</td><td>${money(c.price / 10 * E.LEVEL_MULT[L])}</td></tr>`).join('');
     openModal('info', `<h2><span style="color:${GROUPS[c.group].color}">■</span> ${c.name} <small class="hint">${GROUPS[c.group].name}片区</small></h2>
       <p>地价 ${money(c.price)} · 每层加盖 ${money(E.upgradeCost(i))}<br>
-      ${owner ? `地主：<b style="color:${owner.color}">${esc(owner.name)}</b> · ${LEVELS[ld.level]} · 当前过路费 <b>${money(E.rentFor(s, i))}</b> · 总价 ${money(E.landValue(s, i))}` : '无主空地'}</p>
+      ${owner ? `地主：<b style="color:${owner.color}">${CHARACTERS[owner.char].emoji} ${esc(owner.name)}</b> · ${LEVELS[ld.level]} · 当前过路费 <b>${money(E.rentFor(s, i))}</b> · 总价 ${money(E.landValue(s, i))}` : '无主空地'}</p>
       <table class="info-table"><tr><td><b>建筑</b></td><td><b>基础过路费</b></td></tr>${rows}</table>
       <p class="hint">同片区每多拥有一块地，过路费 +50%；钱夫人收租再 +25%。</p>
       ${extra.map(x => `<p>${x}</p>`).join('')}`);
@@ -806,7 +1063,7 @@
       <div class="row"><button class="btn big" data-leave>离开道具店</button></div>`);
     $('#modalBody').onclick = e => {
       const b = e.target.closest('[data-buy]');
-      if (b) send({ type: 'shopBuy', card: b.dataset.buy });
+      if (b) { sfx.good(); send({ type: 'shopBuy', card: b.dataset.buy }); }
       if (e.target.closest('[data-leave]')) { closeModal(); send({ type: 'skip' }); }
     };
   }
@@ -816,7 +1073,8 @@
     openModal('casino', `<h2>🎰 赌场 · 押大小</h2>
       <p>摇三颗骰子：11–18 为大，3–10 为小，豹子（三颗相同）庄家通吃。你的现金 ${money(p.cash)}</p>
       <div class="row">${[1000, 3000, 5000].map(a => `<button class="btn ${a === casinoBet ? 'gold' : ''}" data-amt="${a}" ${a > p.cash ? 'disabled' : ''}>${money(a)}</button>`).join('')}</div>
-      <div class="row"><button class="btn primary big" data-pick="big">押大</button><button class="btn primary big" data-pick="small">押小</button><button class="btn" data-leave>不赌了</button></div>`);
+      <div class="casino-pick"><button class="btn primary huge" data-pick="big">押大</button><button class="btn primary huge" data-pick="small">押小</button></div>
+      <div class="row"><button class="btn" data-leave>不赌了</button></div>`);
     $('#modalBody').onclick = e => {
       const a = e.target.closest('[data-amt]');
       if (a) { casinoBet = Number(a.dataset.amt); openCasino(); return; }
@@ -836,8 +1094,8 @@
       if (s.phase === 'shop') { dismissedVisit = visitKey(); openShop(); }
       if (s.phase === 'casino') { dismissedVisit = visitKey(); openCasino(); }
     }
-    if (s.phase === 'over' && !view.animating && view.shownOver !== s.turn && (!modalKind || modalKind === 'info')) {
-      view.shownOver = s.turn;
+    if (s.phase === 'over' && !view.animating && view.overShown !== s.turn && (!modalKind || modalKind === 'info')) {
+      view.overShown = s.turn;
       showRanking();
     }
   }
@@ -864,6 +1122,7 @@
   function goHome() {
     if (ctrl) ctrl.leave();
     ctrl = null;
+    resetView();
     show('home');
     const sv = store.get('mono.save', null);
     $('#resumeBtn').classList.toggle('hidden', !(sv && sv.state && sv.state.phase !== 'over'));
@@ -871,7 +1130,8 @@
   }
 
   // ---------- 顶部按钮 ----------
-  $('#soundBtn').onclick = () => { soundOn = !soundOn; store.set('mono.sound', soundOn); render(); if (soundOn) sfx.info(); };
+  $('#soundBtn').onclick = () => { soundOn = !soundOn; store.set('mono.sound', soundOn); renderLive(); if (soundOn) sfx.info(); };
+  $('#speedBtn').onclick = () => { speedIdx = (speedIdx + 1) % SPEEDS.length; store.set('mono.speed', SPEEDS[speedIdx].key); renderLive(); };
   $('#autoBtn').onclick = () => {
     const s = ctrl.state, me = viewer(s);
     if (me >= 0) send({ type: 'setAuto', value: !s.players[me].auto });

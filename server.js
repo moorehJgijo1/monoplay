@@ -82,13 +82,13 @@ function scheduleBots(room) {
   clearTimeout(room.botTimer);
   const s = room.state;
   if (!s || s.phase === 'over') return;
+  // 记录客户端动画大约播放到什么时候；电脑要等动画播完再行动
+  const now = Date.now();
+  room.animUntil = Math.max(room.animUntil || 0, now) + E.paceMs(s, room.paceMark || E.paceMark(s));
+  room.paceMark = E.paceMark(s);
   const idx = E.pendingActor(s);
   if (idx === null || !needsAutoplay(room, idx)) return;
-  // 给客户端留出播放走路动画的时间
-  const lastMove = s.moves[s.moves.length - 1];
-  const fresh = lastMove && lastMove.n > (room.lastAnimatedSeq || 0);
-  const delay = 700 + (fresh ? Math.min(lastMove.path.length, 12) * 180 : 0);
-  if (lastMove) room.lastAnimatedSeq = lastMove.n;
+  const delay = room.animUntil - now + E.PACE.think;
   room.botTimer = setTimeout(() => {
     if (!room.state || room.state !== s) return;
     const cur = E.pendingActor(s);
@@ -273,7 +273,8 @@ async function handleApi(req, res, url) {
       if (room.state && room.state.phase !== 'over') return sendJSON(res, 400, { error: '游戏已开始' });
       if (room.seats.length < 2) return sendJSON(res, 400, { error: '至少需要 2 名玩家' });
       room.state = E.createGame(room.seats.map(s => ({ id: s.id, name: s.name, char: s.char, isBot: s.isBot })), room.settings);
-      room.lastAnimatedSeq = 0;
+      room.paceMark = null;
+      room.animUntil = 0;
       broadcast(room);
       scheduleBots(room);
       return sendJSON(res, 200, { ok: true });

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>大富翁·欢乐城</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -101,13 +103,21 @@
       <div id="board" class="board">
         <div class="center">
           <div class="center-top">
-            <div class="mini-logo">🎲 大富翁</div>
+            <div class="mini-logo">大富翁<small>欢乐城</small></div>
             <div id="roundInfo" class="round-info"></div>
           </div>
-          <div id="dice" class="dice"><span class="die">🎲</span></div>
-          <div id="turnBanner" class="turn-banner"></div>
+          <div class="now-playing">
+            <div id="nowAvatar" class="now-avatar"></div>
+            <div class="now-info">
+              <div id="nowName" class="now-name"></div>
+              <div id="nowSub" class="now-sub"></div>
+            </div>
+            <div id="dice" class="dice"></div>
+          </div>
           <div id="centerLog" class="center-log"></div>
+          <div id="stage" class="stage hidden"></div>
         </div>
+        <div id="pieces" class="pieces"></div>
       </div>
       <div id="selectBanner" class="select-banner hidden"><span></span><button class="btn small" id="cancelSelect">取消</button></div>
     </div>
@@ -115,6 +125,7 @@
     <aside class="side">
       <div class="side-top">
         <button class="btn small" id="menuBtn">☰ 菜单</button>
+        <button class="btn small" id="speedBtn">⏩ 中速</button>
         <button class="btn small" id="soundBtn">🔊</button>
         <button class="btn small" id="autoBtn">🤖 托管</button>
       </div>

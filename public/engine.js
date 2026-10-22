@@ -178,8 +178,8 @@
     if (s.log.length > 150) s.log.splice(0, s.log.length - 150);
   }
   // 给界面弹出的特效消息
-  function fx(s, emoji, title, text, tone = 'info', player = null) {
-    s.fx.push({ n: ++s.seq, emoji, title, text, tone, player });
+  function fx(s, emoji, title, text, tone = 'info', player = null, extra = null) {
+    s.fx.push({ n: ++s.seq, emoji, title, text, tone, player, ...(extra ? { extra } : {}) });
     if (s.fx.length > 30) s.fx.shift();
   }
   function recordMove(s, i, path, jump = false) {
@@ -570,7 +570,7 @@
   function wheel(s, i) {
     const r = pickWeighted(s, WHEEL);
     log(s, `🎡 ${pn(s, i)} 转动幸运转盘：${r.text}`);
-    fx(s, r.emoji, '幸运转盘', `${pn(s, i)}：${r.text}`, r.tone, i);
+    fx(s, r.emoji, '幸运转盘', `${pn(s, i)}：${r.text}`, r.tone, i, { face: WHEEL.indexOf(r) });
     r.run(s, i);
   }
 
@@ -800,6 +800,7 @@
         }
         s.dice = d;
         s.diceSeq = (s.diceSeq || 0) + 1;
+        s.diceN = ++s.seq;
         let steps = d[0] + d[1];
         if (p.turtle > 0) { p.turtle--; steps = 1; }
         log(s, `🎲 ${p.name} 掷出 ${d[0]} + ${d[1]} = ${d[0] + d[1]}${steps === 1 && d[0] + d[1] !== 1 ? '，但像乌龟一样只走 1 步 🐢' : ''}`);
@@ -862,11 +863,11 @@
         if (wins(d)) {
           p.cash += amt;
           log(s, `🎰 ${p.name} 押${big ? '大' : '小'} ${money(amt)}，开出 ${desc}，赢了！${cheated ? '（出千成功 🎩）' : ''}`);
-          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，赢了 ${money(amt)}！`, 'good', i);
+          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，赢了 ${money(amt)}！`, 'good', i, { dice: d, big, amt });
         } else {
           p.cash -= amt;
           log(s, `🎰 ${p.name} 押${big ? '大' : '小'} ${money(amt)}，开出 ${desc}，输了`);
-          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，输掉 ${money(amt)}`, 'bad', i);
+          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，输掉 ${money(amt)}`, 'bad', i, { dice: d, big, amt });
         }
         s.phase = 'done';
         settle(s);
@@ -883,7 +884,32 @@
     return { error: '未知操作' };
   }
 
+  // ---------- 动画节奏（客户端播放动画、服务器安排电脑行动间隔共用） ----------
+  const CARD_TITLES = new Set(Object.values(CARDS).map(c => c.name));
+  function fxKind(f) {
+    if (f.title === '机会' || f.title === '命运') return 'card';
+    if (f.title === '新闻快报') return 'news';
+    if (f.title === '幸运转盘') return 'wheel';
+    if (f.title === '赌场') return 'casino';
+    if (f.title === '破产' || f.title === '游戏结束') return 'big';
+    if (/附身|显灵|祝福|作祟|保佑/.test(f.title)) return 'god';
+    if (CARD_TITLES.has(f.title)) return 'item';
+    return 'toast';
+  }
+  const PACE = { step: 300, jump: 550, dice: 1100, card: 2600, news: 2800, wheel: 3600, casino: 3000, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
+  const paceMark = s => ({ seq: s.seq, dice: s.diceSeq || 0, turn: s.turn });
+  // 估算从 mark 之后的新动画（走棋、骰子、事件、换人）需要播放多少毫秒
+  function paceMs(s, mark) {
+    let ms = 0;
+    if ((s.diceSeq || 0) !== mark.dice) ms += PACE.dice;
+    s.moves.forEach(m => { if (m.n > mark.seq) ms += m.jump ? PACE.jump : m.path.length * PACE.step; });
+    s.fx.forEach(f => { if (f.n > mark.seq) ms += PACE[fxKind(f)]; });
+    if (s.turn !== mark.turn) ms += PACE.turn;
+    return ms ? ms + PACE.settle : 0;
+  }
+
   return {
+    PACE, fxKind, paceMs, paceMark, WHEEL_FACES: WHEEL.map(w => ({ emoji: w.emoji, text: w.text, tone: w.tone })),
     BOARD, N, GROUPS, GROUP_CELLS, LANDS, LEVELS, LEVEL_EMOJI, LEVEL_MULT, MAX_LEVEL, MAX_CARDS, JAIL, HOSPITAL,
     CHARACTERS, CHAR_KEYS, GODS, CARDS, CARD_KEYS, PLAYER_COLORS,
     createGame, applyAction, pendingActor, cardTargets,
