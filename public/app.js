@@ -479,6 +479,15 @@ import { sfx, setSoundEnabled } from './sound.js';
   const FACE_ROT = { 1: [0, 0], 2: [90, 0], 3: [0, -90], 4: [0, 90], 5: [-90, 0], 6: [0, 180] };
   const cubeFaces = () => [1, 2, 3, 4, 5, 6].map(v => `<div class="face f${v} ${v === 1 || v === 4 ? 'red' : ''}">${Array.from({ length: 9 }, (_, i) => `<i class="${PIPS[v].includes(i) ? 'on' : ''}"></i>`).join('')}</div>`).join('');
   async function playDice(d) {
+    // 有 3D 场景时把骰子直接扔进城市里（真实物理碰撞）；否则用中央的 CSS 骰子
+    if (board && board.rollDice) {
+      try {
+        sfx.whoosh();
+        await board.rollDice(d, { speed: 1 / speedMul(), onHit: v => sfx.diceHit(v), onReveal: () => sfx.diceReveal(d[0] === d[1]) });
+        view.dice = d;
+        return;
+      } catch (e) { console.error(e); }
+    }
     const T = PACE.dice * speedMul();
     const st = $('#diceStage');
     const doubles = d[0] === d[1];

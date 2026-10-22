@@ -2,6 +2,8 @@
 // 只负责“画”，不含任何规则；由 app.js 把要展示的状态和动画指令交给它。
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
+import * as CANNON from './vendor/cannon-es.js';
 
 const U = 2; // 相邻路口的间距
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
@@ -707,6 +709,165 @@ export function createBoard3D(container, E, opts = {}) {
   window.addEventListener('resize', resize);
   resize();
 
+  // ---------- 物理骰子 ----------
+  // 点数由引擎决定。做法：先在后台把整个抛掷过程用物理引擎算完并记录每一帧，
+  // 看最后哪一面朝上，再把骰子的点数贴图重新排列，让朝上那面正好是要的点数，最后回放轨迹。
+  const PIP_POS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const faceMats = [null, 1, 2, 3, 4, 5, 6].map(v => {
+    if (!v) return null;
+    const { ctx: g, tex } = makeCanvas(128, 128);
+    g.fillStyle = '#fbfbf8';
+    g.fillRect(0, 0, 128, 128);
+    PIP_POS[v].forEach(k => {
+      const x = 28 + (k % 3) * 36, y = 28 + Math.floor(k / 3) * 36, r = v === 1 ? 17 : 12;
+      const grad = g.createRadialGradient(x - 3, y - 3, 1, x, y, r);
+      grad.addColorStop(0, v === 1 || v === 4 ? '#ff6b6b' : '#555');
+      grad.addColorStop(1, v === 1 || v === 4 ? '#c40000' : '#0b0b0b');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    });
+    tex.needsUpdate = true;
+    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.3, metalness: 0.02 });
+  });
+  const DIE = 1.05;
+  const dieGeo = new RoundedBoxGeometry(DIE, DIE, DIE, 4, 0.16);
+  // BoxGeometry 的六个面依次是 +x -x +y -y +z -z，对面成对：(0,1) (2,3) (4,5)
+  const FACE_NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map(a => new THREE.Vector3(...a));
+  function upFace(q) {
+    let best = 0, bestY = -2;
+    FACE_NORMALS.forEach((n, k) => { const y = n.clone().applyQuaternion(q).y; if (y > bestY) { bestY = y; best = k; } });
+    return [best, bestY];
+  }
+  function labelFaces(up, value) {
+    const vals = Array(6);
+    vals[up] = value;
+    vals[up ^ 1] = 7 - value;
+    const rest = [1, 2, 3].filter(x => x !== value && x !== 7 - value);
+    const pairs = [0, 2, 4].filter(p => p !== (up & ~1));
+    pairs.forEach((p, k) => { vals[p] = rest[k]; vals[p + 1] = 7 - rest[k]; });
+    return vals.map(v => faceMats[v]);
+  }
+
+  function simulateThrow(center, toward) {
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0), allowSleep: true });
+    const dieMat = new CANNON.Material('die'), hardMat = new CANNON.Material('hard');
+    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.28, restitution: 0.38 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, { friction: 0.2, restitution: 0.45 }));
+    const addStatic = (shape, x, y, z) => { const b = new CANNON.Body({ mass: 0, material: hardMat }); b.addShape(shape); b.position.set(x, y, z); world.addBody(b); };
+    const ground = new CANNON.Body({ mass: 0, material: hardMat });
+    ground.addShape(new CANNON.Plane());
+    ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    world.addBody(ground);
+    const R = 3.6, near = (x, z, pad = 1.5) => Math.abs(x - center.x) < R + pad && Math.abs(z - center.z) < R + pad;
+    // 抛掷区域四周的隐形墙，骰子不会飞出画面
+    [[R, 0], [-R, 0], [0, R], [0, -R]].forEach(([dx, dz]) => addStatic(new CANNON.Box(new CANNON.Vec3(dx ? 0.25 : R + 0.25, 5, dz ? 0.25 : R + 0.25)), center.x + dx, 5, center.z + dz));
+    // 路口格子、地块、房子、棋子都能撞
+    BOARD.forEach((_, i) => { const p = cellPos(i); if (near(p.x, p.z)) addStatic(new CANNON.Box(new CANNON.Vec3(U * 0.45, 0.15, U * 0.45)), p.x, 0.15, p.z); });
+    Object.values(lots).forEach(l => {
+      if (!near(l.center.x, l.center.z)) return;
+      addStatic(new CANNON.Box(new CANNON.Vec3(U * 0.43, 0.07, U * 0.43)), l.center.x, 0.07, l.center.z);
+      const b = l.holder.children[0], top = b && b.userData.top;
+      if (top) addStatic(new CANNON.Box(new CANNON.Vec3(0.62, top / 2, 0.62)), l.center.x, 0.14 + top / 2, l.center.z);
+    });
+    pieces.forEach((pc, k) => {
+      const p = pc.group.position;
+      if (alive[k] && near(p.x, p.z)) addStatic(new CANNON.Cylinder(0.45, 0.45, 1.5, 12), p.x, 0.3 + 0.75, p.z);
+    });
+    const side = new THREE.Vector3(-toward.z, 0, toward.x);
+    const dice = [-1, 1].map(sgn => {
+      const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.3, sleepTimeLimit: 0.2, linearDamping: 0.05, angularDamping: 0.08 });
+      b.addShape(new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)));
+      // 从镜头一侧斜着扔下，落在玩家前方，再往玩家和房子那边滚
+      const start = center.clone().addScaledVector(toward, 3.1).addScaledVector(side, sgn * 0.9);
+      b.position.set(start.x, 5 + Math.random() * 0.8, start.z);
+      b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
+      const v = toward.clone().multiplyScalar(-(2.6 + Math.random() * 1.6)).addScaledVector(side, -sgn * (0.6 + Math.random() * 1.2));
+      b.velocity.set(v.x, -2 + Math.random() * 1.5, v.z);
+      b.angularVelocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
+      world.addBody(b);
+      return b;
+    });
+    const hits = [], lastHit = [-1, -1];
+    let time = 0;
+    dice.forEach((b, k) => b.addEventListener('collide', e => {
+      const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
+      if (v > 1.2 && time - lastHit[k] > 0.05) { hits.push({ t: time, v }); lastHit[k] = time; }
+    }));
+    const frames = [];
+    const STEP = 1 / 120;
+    for (let n = 0; n < 120 * 4; n++) {
+      world.step(STEP);
+      time += STEP;
+      if (n % 2 === 0) frames.push(dice.map(b => [b.position.x, b.position.y, b.position.z, b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w]));
+      if (time > 0.6 && dice.every(b => b.sleepState === CANNON.Body.SLEEPING)) break;
+    }
+    return { frames, hits };
+  }
+
+  async function rollDice(values, { speed = 1, onHit, onReveal } = {}) {
+    const ref = focus !== null && pieces[focus] ? pieces[focus].group.position.clone().setY(0) : controls.target.clone().setY(0);
+    const toward = camera.position.clone().sub(controls.target).setY(0).normalize();
+    const { frames, hits } = simulateThrow(ref, toward);
+    // 按最终朝上的面重新贴点数；如果斜靠在房子上，追加几帧把它摆正
+    const last = frames[frames.length - 1];
+    const fixes = values.map((v, k) => {
+      const q = new THREE.Quaternion(last[k][3], last[k][4], last[k][5], last[k][6]);
+      const [up, dot] = upFace(q);
+      const target = dot < 0.97 ? new THREE.Quaternion().setFromUnitVectors(FACE_NORMALS[up].clone().applyQuaternion(q), new THREE.Vector3(0, 1, 0)).multiply(q) : q;
+      return { up, q, target };
+    });
+    if (fixes.some(f => f.q !== f.target)) {
+      for (let j = 1; j <= 9; j++) {
+        frames.push(fixes.map((f, k) => {
+          const qq = f.q.clone().slerp(f.target, j / 9);
+          return [last[k][0], last[k][1], last[k][2], qq.x, qq.y, qq.z, qq.w];
+        }));
+      }
+    }
+    const meshes = values.map((v, k) => {
+      const m = new THREE.Mesh(dieGeo, labelFaces(fixes[k].up, v));
+      m.castShadow = true;
+      scene.add(m);
+      return m;
+    });
+    const timers = hits.map(h => setTimeout(() => onHit && onHit(h.v), (h.t * 1000) / speed));
+    const dur = (frames.length / 60) * 1000 / speed;
+    await animate(dur, t => {
+      const fi = Math.min(frames.length - 1, t * (frames.length - 1));
+      const a = frames[Math.floor(fi)], b = frames[Math.ceil(fi)], w = fi - Math.floor(fi);
+      meshes.forEach((m, k) => {
+        m.position.set(a[k][0] + (b[k][0] - a[k][0]) * w, a[k][1] + (b[k][1] - a[k][1]) * w, a[k][2] + (b[k][2] - a[k][2]) * w);
+        m.quaternion.set(a[k][3], a[k][4], a[k][5], a[k][6]).slerp(new THREE.Quaternion(b[k][3], b[k][4], b[k][5], b[k][6]), w);
+      });
+    });
+    timers.forEach(clearTimeout);
+    // 亮出点数：骰子下方光圈 + 头顶大数字
+    const mid = meshes[0].position.clone().add(meshes[1].position).multiplyScalar(0.5);
+    meshes.forEach(m => {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 40), new THREE.MeshBasicMaterial({ color: '#ffd43b', transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(m.position.x, 0.35, m.position.z);
+      scene.add(ring);
+      animate(900, t => { ring.scale.setScalar(1 + t * 1.6); ring.material.opacity = 1 - t; if (t >= 1) scene.remove(ring); });
+    });
+    const total = textSprite(String(values[0] + values[1]), '#e8452c', '#fff', 1.3);
+    total.position.set(mid.x, mid.y + 1.9, mid.z);
+    scene.add(total);
+    if (onReveal) onReveal();
+    const s0 = total.scale.clone();
+    await animate(420 / speed, t => total.scale.copy(s0).multiplyScalar(Math.max(0.01, easeOutBack(t))));
+    await new Promise(r => setTimeout(r, 650 / speed));
+    await animate(300 / speed, t => {
+      meshes.forEach(m => m.scale.setScalar(Math.max(0.01, 1 - t)));
+      total.material.opacity = 1 - t;
+      total.position.y = mid.y + 1.9 + t;
+    });
+    meshes.forEach(m => scene.remove(m));
+    scene.remove(total);
+  }
+
   // ---------- 对外接口 ----------
   return {
     // 新的一局：重建棋子
@@ -790,5 +951,6 @@ export function createBoard3D(container, E, opts = {}) {
       return [(v.x + 1) / 2 * container.clientWidth, (1 - v.y) / 2 * container.clientHeight];
     },
     resize,
+    rollDice,
   };
 }

@@ -141,6 +141,8 @@ const sounds = {
   // 落桌：两声清脆的“咔哒”
   diceLand() { clack(0, 1.1); clack(0.06, 0.9); },
   diceBounce() { clack(0, 0.7); },
+  // 物理骰子的每次碰撞：撞得越狠越响
+  diceHit(v = 5) { clack(0, Math.min(1.3, 0.3 + v / 9)); },
   // 点数揭晓：亮晶晶的上行琶音；对子更华丽
   diceReveal(doubles) {
     [N.C6, N.E6, N.G6].forEach((f, k) => bell({ t: k * 0.06, freq: f, dur: 0.7, gain: 0.08 }));
