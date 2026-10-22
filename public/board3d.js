@@ -540,6 +540,8 @@ export function createBoard3D(container, E, opts = {}) {
 
   // ---------- 相机 ----------
   let viewMode = 'follow', focus = null;
+  let shake = 0;
+  const shakeOff = new THREE.Vector3();
   camera.position.set(0, 15, 15);
   controls.target.set(0, 0, 0);
   // 竖屏（手机）时视野窄，镜头要拉远一些
@@ -672,6 +674,7 @@ export function createBoard3D(container, E, opts = {}) {
       try { a.update(t); } catch (e) { console.error('动画出错，已跳过', e); failed = true; }
       if (t >= 1 || failed) { anims.splice(k, 1); a.resolve(); }
     }
+    camera.position.sub(shakeOff);
     // 相机平滑跟随
     const want = viewMode === 'follow' && focus !== null && pieces[focus] ? pieces[focus].group.position.clone().setY(0) : center.clone();
     const delta = want.sub(controls.target).multiplyScalar(1 - Math.pow(0.02, Math.min(rawDt, 0.25)));
@@ -693,6 +696,12 @@ export function createBoard3D(container, E, opts = {}) {
       else if (t.trail > 0) { t.trail = Math.max(0, t.trail - dt * 0.8); t.glow.material.opacity = t.trail * 0.55; }
       else t.glow.material.opacity = 0;
     });
+    // 撞击时镜头轻微震动，并很快衰减
+    if (shake > 0.002) {
+      shakeOff.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+      shake *= Math.pow(0.02, dt * 2.5);
+    } else { shakeOff.set(0, 0, 0); shake = 0; }
+    camera.position.add(shakeOff);
     renderer.render(scene, camera);
   }
   requestAnimationFrame(frame);
@@ -756,14 +765,14 @@ export function createBoard3D(container, E, opts = {}) {
   function simulateThrow(center, toward) {
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0), allowSleep: true });
     const dieMat = new CANNON.Material('die'), hardMat = new CANNON.Material('hard');
-    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.28, restitution: 0.38 }));
-    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, { friction: 0.2, restitution: 0.45 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, hardMat, { friction: 0.32, restitution: 0.52 }));
+    world.addContactMaterial(new CANNON.ContactMaterial(dieMat, dieMat, { friction: 0.15, restitution: 0.6 }));
     const addStatic = (shape, x, y, z) => { const b = new CANNON.Body({ mass: 0, material: hardMat }); b.addShape(shape); b.position.set(x, y, z); world.addBody(b); };
     const ground = new CANNON.Body({ mass: 0, material: hardMat });
     ground.addShape(new CANNON.Plane());
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     world.addBody(ground);
-    const R = 3.6, near = (x, z, pad = 1.5) => Math.abs(x - center.x) < R + pad && Math.abs(z - center.z) < R + pad;
+    const R = 4.6, near = (x, z, pad = 1.5) => Math.abs(x - center.x) < R + pad && Math.abs(z - center.z) < R + pad;
     // 抛掷区域四周的隐形墙，骰子不会飞出画面
     [[R, 0], [-R, 0], [0, R], [0, -R]].forEach(([dx, dz]) => addStatic(new CANNON.Box(new CANNON.Vec3(dx ? 0.25 : R + 0.25, 5, dz ? 0.25 : R + 0.25)), center.x + dx, 5, center.z + dz));
     // 路口格子、地块、房子、棋子都能撞
@@ -780,15 +789,16 @@ export function createBoard3D(container, E, opts = {}) {
     });
     const side = new THREE.Vector3(-toward.z, 0, toward.x);
     const dice = [-1, 1].map(sgn => {
-      const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.3, sleepTimeLimit: 0.2, linearDamping: 0.05, angularDamping: 0.08 });
+      const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.3, linearDamping: 0.02, angularDamping: 0.03 });
       b.addShape(new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)));
-      // 从镜头一侧斜着扔下，落在玩家前方，再往玩家和房子那边滚
-      const start = center.clone().addScaledVector(toward, 3.1).addScaledVector(side, sgn * 0.9);
-      b.position.set(start.x, 5 + Math.random() * 0.8, start.z);
+      // 从镜头这一侧低平地斜抛出去：先往上划一道弧，再落地弹跳、翻滚、滑行
+      const start = center.clone().addScaledVector(toward, 4.1).addScaledVector(side, sgn * 0.8);
+      b.position.set(start.x, 2.6 + Math.random() * 0.6, start.z);
       b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
-      const v = toward.clone().multiplyScalar(-(2.6 + Math.random() * 1.6)).addScaledVector(side, -sgn * (0.6 + Math.random() * 1.2));
-      b.velocity.set(v.x, -2 + Math.random() * 1.5, v.z);
-      b.angularVelocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 30);
+      const v = toward.clone().multiplyScalar(-(6 + Math.random() * 2)).addScaledVector(side, -sgn * (0.4 + Math.random() * 1.4));
+      b.velocity.set(v.x, 3 + Math.random() * 2, v.z);
+      const spin = () => (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 22);
+      b.angularVelocity.set(spin(), spin(), spin());
       world.addBody(b);
       return b;
     });
@@ -796,14 +806,16 @@ export function createBoard3D(container, E, opts = {}) {
     let time = 0;
     dice.forEach((b, k) => b.addEventListener('collide', e => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-      if (v > 1.2 && time - lastHit[k] > 0.05) { hits.push({ t: time, v }); lastHit[k] = time; }
+      if (v > 1.2 && time - lastHit[k] > 0.05) { hits.push({ t: time, v, x: b.position.x, z: b.position.z }); lastHit[k] = time; }
     }));
     const frames = [];
     const STEP = 1 / 120;
-    for (let n = 0; n < 120 * 4; n++) {
+    for (let n = 0; n < 120 * 3.6; n++) {
       world.step(STEP);
       time += STEP;
       if (n % 2 === 0) frames.push(dice.map(b => [b.position.x, b.position.y, b.position.z, b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w]));
+      // 后半段逐渐加大阻尼，像在桌面上摩擦减速，自然地晃一晃再停稳
+      if (time > 1.5) dice.forEach(b => { b.linearDamping = Math.min(0.6, b.linearDamping + 0.004); b.angularDamping = Math.min(0.6, b.angularDamping + 0.004); });
       if (time > 0.6 && dice.every(b => b.sleepState === CANNON.Body.SLEEPING)) break;
     }
     return { frames, hits };
@@ -816,6 +828,23 @@ export function createBoard3D(container, E, opts = {}) {
     scene.add(warm);
     renderer.compile(scene, camera);
     scene.remove(warm);
+  }
+
+  const dustGeo = new THREE.SphereGeometry(0.13, 6, 5);
+  function dust(x, z, v) {
+    const n = Math.min(9, 3 + Math.floor(v / 2));
+    for (let k = 0; k < n; k++) {
+      const p = new THREE.Mesh(dustGeo, new THREE.MeshBasicMaterial({ color: '#efe6d2', transparent: true, opacity: 0.8, depthWrite: false }));
+      const ang = Math.random() * Math.PI * 2, sp = 0.6 + Math.random() * 0.9;
+      p.position.set(x, 0.35, z);
+      scene.add(p);
+      animate(450 + Math.random() * 250, t => {
+        p.position.set(x + Math.cos(ang) * sp * t, 0.35 + t * 0.5, z + Math.sin(ang) * sp * t);
+        p.scale.setScalar(1 + t * 2);
+        p.material.opacity = 0.8 * (1 - t);
+        if (t >= 1) scene.remove(p);
+      });
+    }
   }
 
   async function rollDice(values, { speed = 1, onHit, onReveal } = {}) {
@@ -844,17 +873,40 @@ export function createBoard3D(container, E, opts = {}) {
       scene.add(m);
       return m;
     });
-    const timers = hits.map(h => setTimeout(() => onHit && onHit(h.v), (h.t * 1000) / speed));
+    // 每次碰撞：声音 + 扬尘 + 镜头震动
+    const timers = hits.map(h => setTimeout(() => {
+      if (onHit) onHit(h.v);
+      if (h.v > 3) dust(h.x, h.z, h.v);
+      shake = Math.max(shake, Math.min(0.22, h.v * 0.018));
+    }, (h.t * 1000) / speed));
+    // 拖影：高速运动时身后跟着几个渐隐的残影
+    const ghosts = meshes.map(() => [0.32, 0.2, 0.1].map(op => {
+      const g = new THREE.Mesh(dieGeo, new THREE.MeshBasicMaterial({ color: '#fffbe8', transparent: true, opacity: 0, depthWrite: false }));
+      g.userData.op = op;
+      scene.add(g);
+      return g;
+    }));
+    const pose = (fi, k, obj) => {
+      fi = Math.max(0, Math.min(frames.length - 1, fi));
+      const a = frames[Math.floor(fi)], b = frames[Math.ceil(fi)], w = fi - Math.floor(fi);
+      obj.position.set(a[k][0] + (b[k][0] - a[k][0]) * w, a[k][1] + (b[k][1] - a[k][1]) * w, a[k][2] + (b[k][2] - a[k][2]) * w);
+      obj.quaternion.set(a[k][3], a[k][4], a[k][5], a[k][6]).slerp(new THREE.Quaternion(b[k][3], b[k][4], b[k][5], b[k][6]), w);
+    };
     const dur = (frames.length / 60) * 1000 / speed;
     await animate(dur, t => {
-      const fi = Math.min(frames.length - 1, t * (frames.length - 1));
-      const a = frames[Math.floor(fi)], b = frames[Math.ceil(fi)], w = fi - Math.floor(fi);
+      const fi = t * (frames.length - 1);
       meshes.forEach((m, k) => {
-        m.position.set(a[k][0] + (b[k][0] - a[k][0]) * w, a[k][1] + (b[k][1] - a[k][1]) * w, a[k][2] + (b[k][2] - a[k][2]) * w);
-        m.quaternion.set(a[k][3], a[k][4], a[k][5], a[k][6]).slerp(new THREE.Quaternion(b[k][3], b[k][4], b[k][5], b[k][6]), w);
+        pose(fi, k, m);
+        const a = frames[Math.max(0, Math.floor(fi) - 1)][k], b = frames[Math.floor(fi)][k];
+        const v = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) * 60;
+        ghosts[k].forEach((g, j) => {
+          pose(fi - (j + 1) * 1.5, k, g);
+          g.material.opacity = g.userData.op * Math.min(1, Math.max(0, (v - 3) / 8));
+        });
       });
     });
     timers.forEach(clearTimeout);
+    ghosts.flat().forEach(g => scene.remove(g));
     // 亮出点数：骰子下方光圈 + 头顶大数字
     const mid = meshes[0].position.clone().add(meshes[1].position).multiplyScalar(0.5);
     meshes.forEach(m => {
@@ -864,7 +916,7 @@ export function createBoard3D(container, E, opts = {}) {
       scene.add(ring);
       animate(900, t => { ring.scale.setScalar(1 + t * 1.6); ring.material.opacity = 1 - t; if (t >= 1) scene.remove(ring); });
     });
-    const total = textSprite(String(values[0] + values[1]), '#e8452c', '#fff', 1.3);
+    const total = textSprite(String(values[0] + values[1]), '#e8452c', '#fff', 1.8);
     total.position.set(mid.x, mid.y + 1.9, mid.z);
     scene.add(total);
     if (onReveal) onReveal();

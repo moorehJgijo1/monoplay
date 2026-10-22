@@ -993,7 +993,7 @@
     if (CARD_TITLES.has(f.title)) return 'item';
     return 'toast';
   }
-  const PACE = { step: 300, jump: 550, dice: 3000, card: 2600, news: 2800, wheel: 3600, casino: 3000, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
+  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 3600, casino: 3000, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
   const paceMark = s => ({ seq: s.seq, dice: s.diceSeq || 0, turn: s.turn });
   // 估算从 mark 之后的新动画（走棋、骰子、事件、换人）需要播放多少毫秒
   function paceMs(s, mark) {
