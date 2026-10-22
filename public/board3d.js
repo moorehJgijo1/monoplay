@@ -780,7 +780,7 @@ export function createBoard3D(container, E, opts = {}) {
     });
     const side = new THREE.Vector3(-toward.z, 0, toward.x);
     const dice = [-1, 1].map(sgn => {
-      const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.3, linearDamping: 0.02, angularDamping: 0.03 });
+      const b = new CANNON.Body({ mass: 1, material: dieMat, sleepSpeedLimit: 0.12, sleepTimeLimit: 0.3, linearDamping: 0.02, angularDamping: 0.1 });
       b.addShape(new CANNON.Box(new CANNON.Vec3(DIE / 2, DIE / 2, DIE / 2)));
       // 从画面上方之外的高空一边旋转一边落下，砸在玩家附近，再弹跳、翻滚、滑行
       const start = center.clone().addScaledVector(toward, 1.6 + Math.random() * 0.6).addScaledVector(side, sgn * (1.3 + Math.random() * 0.4));
@@ -788,8 +788,10 @@ export function createBoard3D(container, E, opts = {}) {
       b.quaternion.setFromEuler(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
       const v = toward.clone().multiplyScalar(-(1.5 + Math.random() * 1.5)).addScaledVector(side, -sgn * (0.8 + Math.random() * 1.2));
       b.velocity.set(v.x, -3 - Math.random() * 2, v.z);
-      const spin = () => (Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 22);
-      b.angularVelocity.set(spin(), spin(), spin());
+      // 绕一个主轴翻滚，另外两个轴只带一点点晃动，看起来像真实地掷出去
+      const sign = () => (Math.random() < 0.5 ? -1 : 1);
+      const main = Math.floor(Math.random() * 3), w = [0, 0, 0].map((_, a) => sign() * (a === main ? 5 + Math.random() * 4 : Math.random() * 2));
+      b.angularVelocity.set(w[0], w[1], w[2]);
       world.addBody(b);
       return b;
     });
