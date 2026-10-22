@@ -72,6 +72,25 @@ import { sfx, setSoundEnabled } from './sound.js';
 
   function show(screen) {
     ['home', 'lobby', 'game'].forEach(id => $('#' + id).classList.toggle('hidden', id !== screen));
+    // 主页和房间背后是慢慢旋转的 3D 城市
+    const bg = screen !== 'game';
+    $('#homeBg').classList.toggle('hidden', !bg);
+    $('#homeShade').classList.toggle('hidden', !bg);
+    if (bg) ensureHomeBg();
+  }
+
+  let homeBoard = null;
+  function ensureHomeBg() {
+    if (homeBoard !== null) return;
+    homeBoard = false;
+    try {
+      const demo = E.createGame(CHAR_KEYS.slice(0, 4).map((c, k) => ({ id: 'd' + k, name: CHARACTERS[c].name, char: c, isBot: true })), { seed: 2024, shuffleOrder: false });
+      E.LANDS.forEach((c, k) => { if (k % 3 !== 1) { demo.lands[c].owner = k % 4; demo.lands[c].level = (k * 7) % 6; } });
+      demo.players.forEach((p, k) => { p.pos = [0, 14, 30, 47][k]; });
+      homeBoard = createBoard3D($('#homeBg'), E, { showcase: true });
+      homeBoard.reset(demo);
+      homeBoard.update(demo, demo.players.map(p => p.pos), null, null);
+    } catch (e) { console.warn('主页 3D 背景不可用', e); }
   }
 
   // =====================================================================
@@ -86,7 +105,7 @@ import { sfx, setSoundEnabled } from './sound.js';
   function renderCharPicker() {
     $('#charPicker').innerHTML = CHAR_KEYS.map(k => {
       const c = CHARACTERS[k];
-      return `<button class="char ${k === profile.char ? 'sel' : ''}" data-char="${k}"><span class="em">${c.emoji}</span><span><b>${c.name}</b><small>${c.skill}</small></span></button>`;
+      return `<button class="char ${k === profile.char ? 'sel' : ''}" data-char="${k}" style="--pc:${E.PLAYER_COLORS[CHAR_KEYS.indexOf(k)]}"><span class="em">${c.emoji}</span><b>${c.name}</b><small>${c.skill}</small></button>`;
     }).join('');
   }
   $('#charPicker').onclick = e => {
@@ -322,21 +341,20 @@ import { sfx, setSoundEnabled } from './sound.js';
   // ---------- 房间（大厅） ----------
   function renderLobby() {
     const room = ctrl.room, me = ctrl.you(), isHost = room.hostId === me;
-    $('#lobbyCode').textContent = room.id;
+    $('#lobbyCode').innerHTML = [...room.id].map(ch => `<span>${esc(ch)}</span>`).join('');
     const used = room.seats.map(s => s.char).filter(Boolean);
-    $('#lobbySeats').innerHTML = room.seats.map(s => {
+    const seats = room.seats.map((s, k) => {
       const canPick = s.id === me || (isHost && s.isBot);
-      return `<div class="seat">
-        <span class="em">${s.char ? CHARACTERS[s.char].emoji : (s.isBot ? '🤖' : '❔')}</span>
-        <span class="nm">${esc(s.name)}
-          ${s.id === room.hostId ? '<span class="tag host">房主</span>' : ''}
-          ${s.id === me ? '<span class="tag host">你</span>' : ''}
-          ${s.isBot ? '<span class="tag">电脑</span>' : ''}
-          ${!s.online ? '<span class="tag off">离线</span>' : ''}</span>
+      return `<div class="lobby-seat ${s.id === me ? 'me' : ''}" style="--pc:${E.PLAYER_COLORS[k]}">
+        ${isHost && s.id !== me ? `<button class="kick" data-kick="${s.id}" title="移出">✕</button>` : ''}
+        <span class="av">${s.char ? CHARACTERS[s.char].emoji : (s.isBot ? '🤖' : '❔')}</span>
+        <b class="nm">${esc(s.name)}</b>
+        <span class="tags">${s.id === room.hostId ? '<span class="tag host">房主</span>' : ''}${s.id === me ? '<span class="tag host">你</span>' : ''}${s.isBot ? '<span class="tag">电脑</span>' : ''}${!s.online ? '<span class="tag off">离线</span>' : ''}</span>
         ${canPick ? `<select data-seat-char="${s.id}">${charOptions(s.char, used)}</select>` : `<span class="hint">${s.char ? CHARACTERS[s.char].name : '随机角色'}</span>`}
-        ${isHost && s.id !== me ? `<button class="btn small" data-kick="${s.id}">✕</button>` : ''}
       </div>`;
-    }).join('');
+    });
+    for (let k = room.seats.length; k < 6; k++) seats.push(`<div class="lobby-seat empty"><span class="av">＋</span><span class="hint wait-dots">等待加入</span></div>`);
+    $('#lobbySeats').innerHTML = seats.join('');
     $('#hostControls').classList.toggle('hidden', !isHost);
     $('#lobbyWait').classList.toggle('hidden', isHost);
     $('#lobbyRounds').value = room.settings.maxRounds;
@@ -546,6 +564,8 @@ import { sfx, setSoundEnabled } from './sound.js';
       view.dice = s.dice;
       boardSync(true);
       renderAll();
+      // 新开的一局先播开场：玩家亮相，镜头从全景俯冲到第一位玩家
+      if (s.turn === 1 && !s.diceSeq) { view.queue.push({ intro: true }); playQueue(); }
       return;
     }
     const items = [];
@@ -568,7 +588,8 @@ import { sfx, setSoundEnabled } from './sound.js';
     while (view.queue.length && gen === view.gen) {
       const it = view.queue.shift();
       try {
-        if (it.dice) await playDice(it.dice);
+        if (it.intro) await playIntro();
+        else if (it.dice) await playDice(it.dice);
         else if (it.move) await playMove(it.move);
         else if (it.fx) await playFx(it.fx);
         else if (it.sync) await applySync(it);
@@ -716,6 +737,36 @@ import { sfx, setSoundEnabled } from './sound.js';
       await stageWait(total);
     }
     hideStage();
+  }
+
+  async function playIntro() {
+    const s = view.shown, el = $('#intro');
+    if (board) board.setView('overview');
+    const first = s.players[s.current];
+    el.innerHTML = `<div class="intro-inner">
+      <div class="intro-title">欢乐城 · 游戏开始！</div>
+      <div class="intro-cards">${s.players.map((p, k) => `<div class="intro-card" style="--pc:${p.color};--d:${0.15 + k * 0.14}s">
+        <div class="av">${CHARACTERS[p.char].emoji}</div><b>${esc(p.name)}</b><small>${CHARACTERS[p.char].name}</small></div>`).join('')}</div>
+      <div class="intro-sub">${s.maxRounds ? `${s.maxRounds} 回合` : '不限回合'} · 每人 ${money(first.cash)} · ${esc(first.name)} 先走</div>
+      <div class="skip">点击跳过 ▸</div></div>`;
+    el.classList.remove('hidden');
+    // 等开场画面真正画到屏幕上再开始计时（刚进游戏时 3D 场景初始化可能占用主线程一会儿）
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    sfx.win();
+    await new Promise(res => {
+      const done = () => { clearTimeout(t); el.onclick = null; res(); };
+      const t = setTimeout(done, 2800 * speedMul());
+      el.onclick = done;
+    });
+    el.classList.add('out');
+    await sleep(350);
+    el.classList.add('hidden');
+    el.classList.remove('out');
+    if (board) {
+      board.setView('follow', true);
+      $('#viewBtn').textContent = '🗺️ 全景';
+      await sleep(900 * speedMul());
+    }
   }
 
   async function turnBanner(s) {
@@ -1151,6 +1202,14 @@ import { sfx, setSoundEnabled } from './sound.js';
     if (sv && sv.state) $('#resumeBtn').textContent = `继续上一局（第 ${sv.state.round} 回合）`;
   }
 
+  function showRules() {
+    openModal('rules', `<h2>📖 玩法说明</h2>${$('.rules ul').outerHTML}
+      <h3>角色</h3><ul>${CHAR_KEYS.map(k => `<li>${CHARACTERS[k].emoji} <b>${CHARACTERS[k].name}</b>：${CHARACTERS[k].skill}</li>`).join('')}</ul>
+      <h3>神仙</h3><ul>${Object.values(GODS).map(g => `<li>${g.emoji} <b>${g.name}</b>（${g.turns} 回合）：${g.desc}</li>`).join('')}</ul>
+      <h3>道具卡</h3><ul>${CARD_KEYS.map(k => `<li>${CARDS[k].emoji} <b>${CARDS[k].name}</b>（${CARDS[k].price} 点券）：${CARDS[k].desc}</li>`).join('')}</ul>`);
+  }
+  $('#rulesBtn').onclick = showRules;
+
   // ---------- 顶部按钮 ----------
   $('#soundBtn').onclick = () => { soundOn = !soundOn; setSoundEnabled(soundOn); store.set('mono.sound', soundOn); renderLive(); if (soundOn) sfx.coin(); };
   $('#viewBtn').onclick = () => {
@@ -1187,10 +1246,7 @@ import { sfx, setSoundEnabled } from './sound.js';
         return;
       }
       if (e.target.closest('[data-resign]') && confirm('确定认输吗？你的地产会收归银行。')) { closeModal(); send({ type: 'resign' }); }
-      if (e.target.closest('[data-rules]')) openModal('rules', `<h2>📖 玩法说明</h2>${$('.rules ul').outerHTML}
-        <h3>角色</h3><ul>${CHAR_KEYS.map(k => `<li>${CHARACTERS[k].emoji} <b>${CHARACTERS[k].name}</b>：${CHARACTERS[k].skill}</li>`).join('')}</ul>
-        <h3>神仙</h3><ul>${Object.values(GODS).map(g => `<li>${g.emoji} <b>${g.name}</b>（${g.turns} 回合）：${g.desc}</li>`).join('')}</ul>
-        <h3>道具卡</h3><ul>${CARD_KEYS.map(k => `<li>${CARDS[k].emoji} <b>${CARDS[k].name}</b>（${CARDS[k].price} 点券）：${CARDS[k].desc}</li>`).join('')}</ul>`);
+      if (e.target.closest('[data-rules]')) showRules();
     };
   };
 
@@ -1200,7 +1256,10 @@ import { sfx, setSoundEnabled } from './sound.js';
   const session = store.get('mono.online', null);
   if (location.protocol !== 'file:' && session && session.roomId && (!roomParam || roomParam === session.roomId)) {
     startOnline(session);
-  } else if (roomParam) {
+  } else {
+    show('home');
+  }
+  if (!ctrl && roomParam) {
     $('#roomInput').value = roomParam;
     $$('.mode-tabs .tab')[1].click();
     $('#onlineHint').textContent = `你收到了房间 ${roomParam} 的邀请，填好名字和角色后点“加入房间”。`;

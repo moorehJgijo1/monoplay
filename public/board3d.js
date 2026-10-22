@@ -544,8 +544,12 @@ export function createBoard3D(container, E, opts = {}) {
   controls.target.set(0, 0, 0);
   // 竖屏（手机）时视野窄，镜头要拉远一些
   const viewDist = mode => (mode === 'follow' ? 19 : 44) * Math.max(1, 1.25 / Math.max(camera.aspect, 0.3));
-  function setView(mode) {
+  let wantDist = null;
+  // smooth=true 时镜头平滑推拉（开场从全景俯冲到玩家身上）
+  function setView(mode, smooth) {
     viewMode = mode;
+    if (smooth) { wantDist = viewDist(mode); return; }
+    wantDist = null;
     const dir = camera.position.clone().sub(controls.target).normalize();
     camera.position.copy(controls.target).add(dir.multiplyScalar(viewDist(mode)));
   }
@@ -661,6 +665,8 @@ export function createBoard3D(container, E, opts = {}) {
   function frame(now) {
     // 先排下一帧：即使下面哪里出错，画面也不会就此停住
     requestAnimationFrame(frame);
+    // 所在界面被隐藏时不渲染，省电
+    if (!container.getClientRects().length) { last = now; return; }
     const rawDt = Math.max(0, (now - last) / 1000);
     const dt = Math.min(0.05, rawDt);
     last = now;
@@ -677,6 +683,12 @@ export function createBoard3D(container, E, opts = {}) {
     const delta = want.sub(controls.target).multiplyScalar(1 - Math.pow(0.02, Math.min(rawDt, 0.25)));
     controls.target.add(delta);
     camera.position.add(delta);
+    if (wantDist !== null) {
+      const off = camera.position.clone().sub(controls.target), d = off.length();
+      const nd = d + (wantDist - d) * (1 - Math.pow(0.08, Math.min(rawDt, 0.25)));
+      camera.position.copy(controls.target).add(off.multiplyScalar(nd / d));
+      if (Math.abs(nd - wantDist) < 0.05) wantDist = null;
+    }
     controls.update();
     // 动态元素
     pieces.forEach(pc => {
@@ -707,6 +719,13 @@ export function createBoard3D(container, E, opts = {}) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     if (changed) setView(viewMode);
+  }
+  // 主页背景用的展示模式：慢慢自转，不响应鼠标
+  if (opts.showcase) {
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.35;
+    controls.enabled = false;
+    viewMode = 'overview';
   }
   if (window.ResizeObserver) new ResizeObserver(resize).observe(container);
   window.addEventListener('resize', resize);
@@ -1038,7 +1057,7 @@ export function createBoard3D(container, E, opts = {}) {
     // 金色闪烁：预计会停下的格子
     setHighlight(cells) { highlight = cells && cells.length ? new Set(cells) : null; },
     setFork(options, from, cb, cellMap) { setFork(options, from, cb, cellMap); },
-    setView(mode) { setView(mode); },
+    setView(mode, smooth) { setView(mode, smooth); },
     get viewMode() { return viewMode; },
     focusOn(k) { focus = k; },
     // 棋子头顶在容器里的屏幕坐标（用于飘字）

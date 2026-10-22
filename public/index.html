@@ -11,85 +11,108 @@
 </head>
 <body>
 
+<!-- 主页与房间共用的背景：慢慢旋转的 3D 欢乐城 -->
+<div id="homeBg" class="home-bg"></div>
+<div class="home-shade" id="homeShade"></div>
+
 <!-- 主页 -->
-<section id="home" class="screen">
-  <div class="home-card">
-    <h1 class="logo">🎲 大富翁<span>欢乐城</span></h1>
+<section id="home" class="screen home">
+  <header class="hero">
+    <h1 class="title"><span class="t1">大富翁</span><span class="t2">欢乐城</span></h1>
     <p class="tagline">买地盖楼 · 道具整人 · 神仙附身 · 赌场转盘 —— 看谁笑到最后！</p>
+  </header>
 
-    <label class="field">你的名字 <input id="nameInput" maxlength="12" placeholder="输入昵称"></label>
-
-    <div class="field">选择角色</div>
-    <div id="charPicker" class="char-grid"></div>
-
-    <div class="mode-tabs">
-      <button class="tab active" data-tab="solo">🤖 单机 / 同屏</button>
-      <button class="tab" data-tab="online">🌐 联机</button>
+  <div class="home-grid">
+    <div class="glass">
+      <div class="step"><span class="num">1</span>选择你的角色</div>
+      <div id="charPicker" class="char-grid"></div>
+      <label class="name-field"><span>昵称</span><input id="nameInput" maxlength="12" placeholder="给自己起个名字"></label>
     </div>
 
-    <div id="tab-solo" class="tab-body">
-      <div class="seat-editor" id="soloSeats"></div>
-      <div class="row">
-        <button class="btn" id="addBotBtn">＋ 电脑玩家</button>
-        <button class="btn" id="addLocalBtn">＋ 同屏玩家</button>
+    <div class="glass">
+      <div class="step"><span class="num">2</span>选择玩法</div>
+      <div class="mode-tabs">
+        <button class="tab active" data-tab="solo"><span class="em">🤖</span><b>单机 / 同屏</b><small>和电脑或身边的朋友玩</small></button>
+        <button class="tab" data-tab="online"><span class="em">🌐</span><b>联机对战</b><small>邀请朋友一起玩</small></button>
       </div>
-      <div class="row settings">
-        <label>回合上限 <select id="soloRounds"><option value="20">20</option><option value="30" selected>30</option><option value="50">50</option><option value="0">不限（破产为止）</option></select></label>
-        <label>起始资金 <select id="soloCash"><option value="10000">¥10,000</option><option value="20000" selected>¥20,000</option><option value="30000">¥30,000</option><option value="50000">¥50,000</option></select></label>
+
+      <div id="tab-solo" class="tab-body">
+        <div class="sub-title">参赛玩家</div>
+        <div class="seat-editor" id="soloSeats"></div>
+        <div class="row add-row">
+          <button class="add-btn" id="addBotBtn">＋ 电脑玩家</button>
+          <button class="add-btn" id="addLocalBtn">＋ 同屏玩家</button>
+        </div>
+        <div class="settings">
+          <label><span>回合上限</span><select id="soloRounds"><option value="20">20 回合</option><option value="30" selected>30 回合</option><option value="50">50 回合</option><option value="0">不限（破产为止）</option></select></label>
+          <label><span>起始资金</span><select id="soloCash"><option value="10000">¥10,000</option><option value="20000" selected>¥20,000</option><option value="30000">¥30,000</option><option value="50000">¥50,000</option></select></label>
+        </div>
+        <div class="cta-row">
+          <button class="cta" id="soloStartBtn">🎲 开始游戏</button>
+          <button class="cta ghost hidden" id="resumeBtn">继续上一局</button>
+        </div>
       </div>
-      <div class="row">
-        <button class="btn primary big" id="soloStartBtn">开始游戏</button>
-        <button class="btn big hidden" id="resumeBtn">继续上一局</button>
+
+      <div id="tab-online" class="tab-body hidden">
+        <p class="hint">创建房间后把房间号或链接发给朋友。在同一局域网（或部署到服务器）即可一起玩，空位可以用电脑补上。</p>
+        <div class="cta-row"><button class="cta" id="createRoomBtn">🏠 创建房间</button></div>
+        <div class="join-row">
+          <input id="roomInput" maxlength="4" placeholder="房间号" class="room-input">
+          <button class="cta ghost" id="joinRoomBtn">加入房间</button>
+        </div>
+        <p class="hint" id="onlineHint"></p>
       </div>
     </div>
+  </div>
 
-    <div id="tab-online" class="tab-body hidden">
-      <p class="hint">创建房间后把房间号或链接发给朋友。在同一局域网（或部署到服务器）即可一起玩，空位可以用电脑补上。</p>
-      <div class="row">
-        <button class="btn primary big" id="createRoomBtn">创建房间</button>
-      </div>
-      <div class="row">
-        <input id="roomInput" maxlength="4" placeholder="房间号" class="room-input">
-        <button class="btn big" id="joinRoomBtn">加入房间</button>
-      </div>
-      <p class="hint" id="onlineHint"></p>
-    </div>
+  <footer class="home-foot"><button class="link-btn" id="rulesBtn">📖 玩法说明</button></footer>
 
-    <details class="rules">
-      <summary>📖 玩法说明</summary>
-      <ul>
-        <li>掷两颗骰子前进。走到空地可以买下；再次走到自己的地可以加盖（平房→洋房→公寓→大厦→摩天楼），一次可以盖好几层。</li>
-        <li>别人走到你的地要付过路费；同一片区拥有的地越多，过路费越高（连锁加成）。地主在坐牢/住院/冬眠时收不到钱。</li>
-        <li>掷骰前可以使用道具卡：遥控骰子、路障、地雷、导弹、怪兽、均富卡、查税卡……在道具店用点券购买。</li>
-        <li>地图上会出现神仙，经过就会被附身：财神、福神、土地公、天使是好神；衰神、穷神、恶魔就……自求多福吧。</li>
-        <li>机会、命运、新闻、幸运转盘、赌场随时带来惊喜（或惊吓）。现金不足会自动变卖地产，仍不够就破产。</li>
-        <li>最后一个没破产的人获胜；到达回合上限时总资产最高的人获胜。</li>
-      </ul>
-    </details>
+  <div class="rules hidden">
+    <ul>
+      <li>掷两颗骰子前进。走到空地可以买下；再次走到自己的地可以加盖（平房→洋房→公寓→大厦→摩天楼），一次可以盖好几层。</li>
+      <li>城市里有岔路口，走到路口可以自己选方向，界面会提示每个方向会停在哪里。</li>
+      <li>别人走到你的地要付过路费；同一片区拥有的地越多，过路费越高（连锁加成）。地主在坐牢/住院/冬眠时收不到钱。</li>
+      <li>掷骰前可以使用道具卡：遥控骰子、路障、地雷、导弹、怪兽、均富卡、查税卡……在道具店用点券购买。</li>
+      <li>地图上会出现神仙，经过就会被附身：财神、福神、土地公、天使是好神；衰神、穷神、恶魔就……自求多福吧。</li>
+      <li>机会、命运、新闻、幸运转盘、赌场随时带来惊喜（或惊吓）。现金不足会自动变卖地产，仍不够就破产。</li>
+      <li>最后一个没破产的人获胜；到达回合上限时总资产最高的人获胜。</li>
+    </ul>
   </div>
 </section>
 
 <!-- 联机房间 -->
-<section id="lobby" class="screen hidden">
-  <div class="home-card">
-    <h2>房间 <span id="lobbyCode" class="room-code"></span></h2>
-    <div class="row">
-      <button class="btn" id="copyLinkBtn">📋 复制邀请链接</button>
-      <button class="btn" id="leaveLobbyBtn">退出房间</button>
-    </div>
-    <div id="lobbySeats" class="seat-editor"></div>
-    <div id="hostControls">
-      <div class="row">
-        <button class="btn" id="lobbyAddBot">＋ 添加电脑</button>
+<section id="lobby" class="screen home hidden">
+  <header class="hero small">
+    <h1 class="title"><span class="t1">大富翁</span><span class="t2">欢乐城</span></h1>
+  </header>
+  <div class="home-grid lobby-grid">
+    <div class="glass">
+      <div class="room-head">
+        <div>
+          <div class="sub-title">房间号</div>
+          <div id="lobbyCode" class="room-code"></div>
+        </div>
+        <div class="room-actions">
+          <button class="btn" id="copyLinkBtn">📋 复制邀请链接</button>
+          <button class="btn" id="leaveLobbyBtn">退出房间</button>
+        </div>
       </div>
-      <div class="row settings">
-        <label>回合上限 <select id="lobbyRounds"><option value="20">20</option><option value="30">30</option><option value="50">50</option><option value="0">不限</option></select></label>
-        <label>起始资金 <select id="lobbyCash"><option value="10000">¥10,000</option><option value="20000">¥20,000</option><option value="30000">¥30,000</option><option value="50000">¥50,000</option></select></label>
+      <div class="sub-title">玩家（最多 6 人）</div>
+      <div id="lobbySeats" class="lobby-seats"></div>
+      <div id="hostControls">
+        <div class="settings">
+          <label><span>回合上限</span><select id="lobbyRounds"><option value="20">20 回合</option><option value="30">30 回合</option><option value="50">50 回合</option><option value="0">不限</option></select></label>
+          <label><span>起始资金</span><select id="lobbyCash"><option value="10000">¥10,000</option><option value="20000">¥20,000</option><option value="30000">¥30,000</option><option value="50000">¥50,000</option></select></label>
+        </div>
+        <div class="cta-row">
+          <button class="add-btn" id="lobbyAddBot">＋ 添加电脑</button>
+          <button class="cta" id="lobbyStart">开始游戏</button>
+        </div>
       </div>
-      <button class="btn primary big" id="lobbyStart">开始游戏</button>
+      <p class="hint wait-host" id="lobbyWait"><span class="wait-dots">等待房主开始游戏</span></p>
     </div>
-    <p class="hint" id="lobbyWait">等待房主开始游戏……</p>
-    <div class="chat lobby-chat">
+    <div class="glass chat lobby-chat">
+      <div class="sub-title">💬 房间聊天</div>
       <div class="chat-log" id="lobbyChatLog"></div>
       <form class="chat-form" data-chat><input maxlength="120" placeholder="说点什么……"><button class="btn">发送</button></form>
     </div>
@@ -129,6 +152,7 @@
       <div id="diceStage" class="dice-stage hidden"></div>
       <div id="stage" class="stage hidden"></div>
       <div id="selectBanner" class="select-banner hidden"><span></span><button class="btn small" id="cancelSelect">取消</button></div>
+      <div id="intro" class="intro hidden"></div>
       <div id="noWebgl" class="no-webgl hidden">你的浏览器不支持 WebGL，无法显示 3D 地图。请换用新版 Chrome / Edge / Safari。</div>
     </div>
 
