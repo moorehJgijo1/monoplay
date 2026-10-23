@@ -702,6 +702,11 @@ export function createBoard3D(container, E, opts = {}) {
       if (pc.status.visible) pc.status.position.y = 2.0 + Math.sin(clock.t * 3) * 0.06;
       // 角色动作：走路时摆臂迈腿，站着时轻轻呼吸，并慢慢转身面向镜头
       const t = clock.t + pc.phase, ch = pc.ch;
+      // 每隔 2~5 秒眨一下眼
+      if (!pc.nextBlink) pc.nextBlink = clock.t + 1 + Math.random() * 3;
+      const bp = (clock.t - pc.nextBlink) / 0.16;
+      ch.eyes.forEach(e => { e.scale.y = bp > 0 && bp < 1 ? Math.max(0.1, 1 - Math.sin(bp * Math.PI)) : 1; });
+      if (bp >= 1) pc.nextBlink = clock.t + 2 + Math.random() * 3;
       if (pc.moving) {
         const w = Math.sin(t * 16);
         ch.arms[0].rotation.x = w * 0.9; ch.arms[1].rotation.x = -w * 0.9;
