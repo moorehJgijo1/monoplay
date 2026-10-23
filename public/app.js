@@ -56,6 +56,7 @@ import { sfx, setSoundEnabled } from './sound.js';
   function openModal(kind, html) {
     modalKind = kind;
     $('#modal').classList.toggle('wide', kind === 'shop');
+    $('#modal').classList.toggle('casino-modal', kind === 'casino');
     $('#modalBody').innerHTML = html;
     $('#modal').classList.remove('hidden');
   }
@@ -703,19 +704,12 @@ import { sfx, setSoundEnabled } from './sound.js';
     } else if (kind === 'wheel') {
       await playWheel(f, who, what, total);
     } else if (kind === 'casino') {
-      const x = f.extra || {};
-      const won = f.tone === 'good';
-      showStage(`<div class="casino-box"><div class="ttl">🎰 押大小</div><div class="bet">${esc(who)} 押 <b>${x.big ? '大' : '小'}</b> ${money(x.amt || 0)}</div>
-        <div class="dice" id="casinoDice"></div><div class="res">${won ? '🎉 赢了！' : '💸 输了……'}</div></div>`);
-      if (x.dice) await rollDiceInto($('#casinoDice'), x.dice, 1300);
-      const res = $('#stage .res');
-      if (res) res.classList.add('show');
-      (won ? sfx.good : sfx.bad)();
-      await stageWait(total - 1300);
+      await playCasino(f, who);
     } else {
       // god / item / big
       const glow = f.tone === 'good' ? '#8dffb1' : f.tone === 'bad' ? '#ff6b6b' : '#ffe066';
-      showStage(`<div class="ev-pop ${f.tone} ${kind === 'item' ? 'small' : ''}" style="--glow:${glow}"><div class="big">${f.emoji}</div><div class="ttl">${esc(f.title)}</div><div class="txt">${esc(f.text)}</div></div>`);
+      if (kind === 'item' && f.extra && f.extra.card && CARDS[f.extra.card]) showStage(`<div class="ev-usecard">${cardFace(f.extra.card)}<div class="txt">${esc(f.text)}</div></div>`);
+      else showStage(`<div class="ev-pop ${f.tone} ${kind === 'item' ? 'small' : ''}" style="--glow:${glow}"><div class="big">${f.emoji}</div><div class="ttl">${esc(f.title)}</div><div class="txt">${esc(f.text)}</div></div>`);
       if (['轰！', '导弹', '怪兽卡', '恶魔卡'].includes(f.title)) sfx.boom();
       else if (f.title === '游戏结束') sfx.win();
       else (sfx[f.tone] || sfx.info)();
@@ -752,6 +746,47 @@ import { sfx, setSoundEnabled } from './sound.js';
       $('#viewBtn').textContent = '🗺️ 全景';
       await sleep(900 * speedMul());
     }
+  }
+
+  // ---------- 赌场开奖：摇骰盅 → 掀盅 → 三颗 3D 骰子 → 大小 → 输赢 ----------
+  async function playCasino(f, who) {
+    const x = f.extra || {}, won = f.tone === 'good', d = x.dice || [1, 1, 1];
+    const cube = () => `<div class="die3d-wrap"><div class="die3d">${cubeFaces()}</div></div>`;
+    showStage(`<div class="cs-show">
+      <div class="cs-title">🎰 ${esc(who)} 押 <b class="${x.big ? 'big' : 'small'}">${x.big ? '大' : '小'}</b> ${chipHTML(x.amt || 1000)} ${money(x.amt || 0)}</div>
+      <div class="cs-table"><div class="cs-dice">${cube()}${cube()}${cube()}</div><div class="cs-cup"><i></i></div></div>
+      <div class="cs-sum"></div>
+      <div class="cs-zones mini"><span class="cs-zone small">小 3–10</span><span class="cs-zone big">大 11–18</span></div>
+      <div class="cs-res"></div><div class="wh-fx"></div></div>`);
+    const st = $('#stage'), cup = st.querySelector('.cs-cup'), cubes = [...st.querySelectorAll('.die3d')];
+    const setDice = vals => cubes.forEach((c, k) => { const [rx, ry] = FACE_ROT[vals[k]]; c.style.transform = `rotateX(${rx - 18}deg) rotateY(${ry + (k - 1) * 14}deg)`; });
+    const shake = async ms => { cup.classList.remove('lift'); cup.classList.add('shaking'); sfx.diceShake(ms * speedMul()); await sleep(ms * speedMul()); cup.classList.remove('shaking'); };
+    const lift = async () => { cup.classList.add('lift'); sfx.diceLand(); await sleep(450 * speedMul()); };
+    if (x.first) {
+      setDice(x.first);
+      await shake(900); await lift();
+      st.querySelector('.cs-sum').innerHTML = `${x.first.reduce((a, b) => a + b, 0)} 点……`;
+      await sleep(600 * speedMul());
+      st.querySelector('.cs-sum').innerHTML = '<span class="cheat">🎩 出千！再来一次</span>';
+      sfx.whoosh();
+      await sleep(700 * speedMul());
+      st.querySelector('.cs-sum').innerHTML = '';
+      // 先把盅盖回去，再在盖子底下换骰子，免得被人看见点数在变
+      cup.classList.remove('lift');
+      await sleep(480 * speedMul());
+    }
+    setDice(d);
+    await shake(1100); await lift();
+    const sum = d[0] + d[1] + d[2], leopard = d[0] === d[1] && d[1] === d[2];
+    st.querySelector('.cs-sum').innerHTML = leopard ? `<span class="leo">🐆 豹子！庄家通吃</span>` : `${sum} 点 · <b class="${sum >= 11 ? 'big' : 'small'}">${sum >= 11 ? '大' : '小'}</b>`;
+    if (!leopard) st.querySelector(`.cs-zones.mini .${sum >= 11 ? 'big' : 'small'}`).classList.add('hit');
+    sfx.diceReveal(leopard);
+    await sleep(500 * speedMul());
+    const res = st.querySelector('.cs-res');
+    res.className = 'cs-res show ' + (won ? 'good' : 'bad');
+    res.innerHTML = won ? `🎉 赢了 <b>+${money(x.amt || 0)}</b>` : `💸 输了 <b>−${money(x.amt || 0)}</b>`;
+    if (won) { confetti(st.querySelector('.wh-fx'), 50); sfx.win(); } else sfx.pay();
+    await stageWait(1700);
   }
 
   // ---------- 幸运转盘 ----------
@@ -1193,55 +1228,89 @@ import { sfx, setSoundEnabled } from './sound.js';
     const p = s.players[me];
     el.innerHTML = p.cards.map((k, idx) => {
       const c = CARDS[k], ok = E.cardTargets(s, me, k);
-      return `<button class="card-chip ${ok ? 'usable' : ''} ${c.target === 'passive' ? 'passive' : ''}" data-card="${idx}" title="${esc(c.desc)}"><span class="em">${c.emoji}</span>${c.name}</button>`;
+      return `<button class="card-chip ${ok ? 'usable' : ''} ${c.target === 'passive' ? 'passive' : ''}" data-card="${idx}" title="${esc(c.desc)}" style="--cc:${E.CARD_CATS[c.cat].color}"><span class="em">${c.emoji}</span>${c.name}</button>`;
     }).join('');
   }
 
+  // 一张道具卡牌的样子（商店、使用窗口、使用特效共用）
+  function cardFace(key, cls = '') {
+    const c = CARDS[key], cat = E.CARD_CATS[c.cat];
+    return `<div class="gcard face ${cls}" style="--cc:${cat.color}">
+      <div class="gc-art"><span class="gc-cat">${cat.emoji} ${cat.name}</span><span class="gc-em">${c.emoji}</span></div>
+      <div class="gc-body"><b>${c.name}</b><p>${c.desc}</p></div></div>`;
+  }
+  // 使用前的效果预览
+  function cardPreview(s, me, key) {
+    const p = s.players[me];
+    switch (key) {
+      case 'average': {
+        const al = s.players.filter(x => !x.bankrupt), avg = Math.round(al.reduce((a, x) => a + x.cash, 0) / al.length / 10) * 10;
+        const d = avg - p.cash;
+        return `每人现金变为 <b>${money(avg)}</b>，你 <b class="${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : '−'}${money(Math.abs(d))}</b>`;
+      }
+      case 'buyland': { const ld = s.lands[p.pos]; return ld && ld.owner !== null && ld.owner !== me ? `花 <b>${money(E.landValue(s, p.pos))}</b> 买下 ${esc(s.players[ld.owner].name)} 的「${BOARD[p.pos].name}」` : '要站在对手的地产上才能用'; }
+      case 'stay': return `原地不动，再次触发「${BOARD[p.pos].name}」`;
+      case 'sleep': return `其他 <b>${s.players.filter((x, k) => k !== me && !x.bankrupt).length}</b> 位玩家冬眠 1 回合`;
+      default: return '';
+    }
+  }
+  function targetPreview(s, key, q) {
+    switch (key) {
+      case 'tax': return `要交 <b class="down">${money(Math.round(q.cash * 0.3 / 10) * 10)}</b>`;
+      case 'rob': return `手里 <b>${q.cards.length}</b> 张卡`;
+      case 'frame': return '入狱 2 天';
+      case 'turtle': return '3 回合只走 1 步';
+      case 'blame': return `接走你的${GODS[s.players[viewer(s)].god.key].name}`;
+      default: return '';
+    }
+  }
+  const CELL_HINT = { roadblock: '选一个周围 8 格内的格子放路障', mine: '选一个周围 8 格内的格子埋地雷', monster: '选一块有建筑的地产', angelcard: '选一个片区（点其中任一块地）', devilcard: '选一个片区（点其中任一块地）' };
+
   $('#handPanel').onclick = e => {
     const b = e.target.closest('[data-card]');
-    if (!b) return;
-    const s = ctrl.state, me = viewer(s), idx = Number(b.dataset.card);
-    const key = s.players[me].cards[idx], c = CARDS[key];
+    if (b) openCardUse(Number(b.dataset.card));
+  };
+  function openCardUse(index) {
+    const s = ctrl.state, me = viewer(s), p = s.players[me];
+    const key = p.cards[index], c = CARDS[key];
+    if (!c) return;
     const targets = canAct(s) && s.phase === 'roll' ? E.cardTargets(s, me, key) : null;
     let reason = '';
-    if (c.target === 'passive') reason = '这张卡会在需要时自动生效。';
+    if (c.target === 'passive') reason = '这张卡不用主动使用，付过路费时会自动生效。';
     else if (!canAct(s)) reason = '轮到你时才能使用。';
     else if (s.phase !== 'roll') reason = '只能在掷骰子前使用。';
-    else if (!targets) reason = '现在没有可用的目标。';
-    openModal('card', `<h2>${c.emoji} ${c.name}</h2><p>${esc(c.desc)}</p>
-      ${reason ? `<p class="hint">${reason}</p>` : `<div class="row"><button class="btn primary big" id="useCardBtn">使用</button></div>`}`);
-    if (!reason) $('#useCardBtn').onclick = () => beginUseCard(idx, key, targets);
-  };
-
-  function beginUseCard(index, key, targets) {
-    const c = CARDS[key], s = ctrl.state;
-    if (c.target === 'none') { closeModal(); return send({ type: 'useCard', index }); }
-    if (c.target === 'dice') {
-      const me = viewer(s), p = s.players[me];
-      openModal('target', `<h2>${c.emoji} 想掷出几点？</h2><div class="dice-pick">${targets.map(t => {
+    else if (!targets) reason = key === 'blame' ? '你身上没有神仙可以转嫁。' : '现在没有可用的目标。';
+    let body = '';
+    if (reason) body = `<p class="use-reason">${reason}</p><button class="cta ghost" data-close>知道了</button>`;
+    else if (c.target === 'player') {
+      body = `<div class="use-title">选择目标</div><div class="tgt-grid">${targets.map(id => {
+        const q = s.players.find(x => x.id === id);
+        return `<button class="tgt" data-t="${esc(id)}" style="--pc:${q.color}"><span class="av">${CHARACTERS[q.char].emoji}</span>
+          <b>${esc(q.name)}${id === p.id ? '（自己）' : ''}</b><small>现金 ${money(q.cash)}</small><span class="pv">${targetPreview(s, key, q)}</span></button>`;
+      }).join('')}</div>`;
+    } else if (c.target === 'dice') {
+      body = `<div class="use-title">想掷出几点？</div><div class="dice-pick">${targets.map(t => {
         const ends = E.landings(s, me, p.pos, p.prev, t);
-        return `<button class="btn" data-t="${t}" data-ends="${ends.join(',')}"><b>${t} 点</b>${briefHTML(s, me, ends)}</button>`;
-      }).join('')}</div>
-        <p class="hint">有多个结果的，是因为途中有岔路口，到时候可以自己选。鼠标移到选项上，地图会标出落点。</p>`);
-    } else if (c.target === 'player') {
-      openModal('target', `<h2>${c.emoji} 选择目标</h2><div class="choice-grid">${targets.map(id => {
-        const p = s.players.find(x => x.id === id);
-        return `<button class="btn" data-t="${esc(id)}">${CHARACTERS[p.char].emoji} ${esc(p.name)}${id === ctrl.you() ? '（自己）' : ''}</button>`;
-      }).join('')}</div>`);
+        return `<button class="dopt" data-t="${t}" data-ends="${ends.join(',')}"><b>${t}</b>${briefHTML(s, me, ends)}</button>`;
+      }).join('')}</div><p class="hint">鼠标移到点数上，地图会标出会停下的格子。</p>`;
     } else if (c.target === 'cell') {
-      closeModal();
-      selectMode = { index, key, targets };
-      $('#selectBanner span').textContent = `${c.emoji} ${c.name}：点击棋盘上闪烁的格子`;
-      $('#selectBanner').classList.remove('hidden');
-      boardSync();
-      return;
+      body = `<div class="use-title">${CELL_HINT[key] || '选择一个格子'}</div><p class="hint">可选的格子会在地图上闪烁。</p><button class="cta" data-pickcell>🗺️ 去地图上选</button>`;
+    } else {
+      body = `${cardPreview(s, me, key) ? `<div class="use-preview">${cardPreview(s, me, key)}</div>` : ''}<button class="cta" data-usenow>✨ 使用</button>`;
     }
+    openModal('card', `<div class="use-card">${cardFace(key, 'big')}<div class="use-panel">${body}</div></div>`);
     $('#modalBody').onclick = e => {
-      const b = e.target.closest('[data-t]');
-      if (!b) return;
-      closeModal();
-      $('#modalBody').onclick = null;
-      send({ type: 'useCard', index, target: c.target === 'dice' ? Number(b.dataset.t) : b.dataset.t });
+      if (e.target.closest('[data-close]')) return closeModal();
+      if (e.target.closest('[data-usenow]')) { closeModal(); return send({ type: 'useCard', index }); }
+      if (e.target.closest('[data-pickcell]')) {
+        closeModal();
+        selectMode = { index, key, targets };
+        $('#selectBanner span').textContent = `${c.emoji} ${c.name}：${CELL_HINT[key] || '点击地图上闪烁的格子'}`;
+        $('#selectBanner').classList.remove('hidden');
+        return boardSync();
+      }
+      const t = e.target.closest('[data-t]');
+      if (t) { closeModal(); send({ type: 'useCard', index, target: c.target === 'dice' ? Number(t.dataset.t) : t.dataset.t }); }
     };
   }
   $('#cancelSelect').onclick = () => { selectMode = null; $('#selectBanner').classList.add('hidden'); boardSync(); };
@@ -1335,20 +1404,30 @@ import { sfx, setSoundEnabled } from './sound.js';
       if (e.target.closest('[data-leave]')) { closeModal(); send({ type: 'skip' }); }
     };
   }
-  let casinoBet = 1000;
+  let casinoBet = 1000, casinoZone = null;
+  const CHIP_COLORS = { 1000: '#2f80ed', 3000: '#16a34a', 5000: '#e8452c' };
+  const chipHTML = (amt, cls = '') => `<span class="chip3 ${cls}" style="--ch:${CHIP_COLORS[amt]}"><i>${amt / 1000}K</i></span>`;
   function openCasino() {
     const s = ctrl.state, p = s.players[viewer(s)];
-    openModal('casino', `<h2>🎰 赌场 · 押大小</h2>
-      <p>摇三颗骰子：11–18 为大，3–10 为小，豹子（三颗相同）庄家通吃。你的现金 ${money(p.cash)}</p>
-      <div class="row">${[1000, 3000, 5000].map(a => `<button class="btn ${a === casinoBet ? 'gold' : ''}" data-amt="${a}" ${a > p.cash ? 'disabled' : ''}>${money(a)}</button>`).join('')}</div>
-      <div class="casino-pick"><button class="btn primary huge" data-pick="big">押大</button><button class="btn primary huge" data-pick="small">押小</button></div>
-      <div class="row"><button class="btn" data-leave>不赌了</button></div>`);
+    if (casinoBet > p.cash) casinoBet = 1000;
+    const zone = (k, name, range) => `<button class="cs-zone ${k} ${casinoZone === k ? 'on' : ''}" data-zone="${k}">
+      <b>${name}</b><small>${range} · 1 赔 1</small>${casinoZone === k ? `<span class="placed">${chipHTML(casinoBet)}</span>` : ''}</button>`;
+    openModal('casino', `<div class="casino">
+      <div class="cs-head"><div class="cs-sign">🎰 欢乐赌场<small>三颗骰子押大小</small></div><div class="cs-cash"><small>我的现金</small><b>${money(p.cash)}</b></div></div>
+      <div class="cs-felt">
+        <div class="cs-zones">${zone('small', '小', '3–10')}${zone('big', '大', '11–18')}</div>
+        <div class="cs-rule">⚠️ 三颗骰子点数相同（豹子）庄家通吃${p.char === 'laoqian' ? ' · 🎩 大老千输了可以出千重来一次' : ''}</div>
+        <div class="cs-chips"><span>筹码</span>${[1000, 3000, 5000].map(a => `<button class="chipbtn ${a === casinoBet ? 'on' : ''}" data-amt="${a}" ${a > p.cash ? 'disabled' : ''}>${chipHTML(a)}<small>${money(a)}</small></button>`).join('')}</div>
+      </div>
+      <div class="cs-actions"><button class="cta" data-open ${casinoZone ? '' : 'disabled'}>${casinoZone ? `🎲 开盅！押${casinoZone === 'big' ? '大' : '小'} ${money(casinoBet)}` : '先点“大”或“小”下注'}</button><button class="cta ghost" data-leave>不赌了</button></div>
+    </div>`);
     $('#modalBody').onclick = e => {
       const a = e.target.closest('[data-amt]');
-      if (a) { casinoBet = Number(a.dataset.amt); openCasino(); return; }
-      const pk = e.target.closest('[data-pick]');
-      if (pk) { closeModal(); send({ type: 'bet', amount: casinoBet <= p.cash ? casinoBet : 1000, pick: pk.dataset.pick }); }
-      if (e.target.closest('[data-leave]')) { closeModal(); send({ type: 'skip' }); }
+      if (a && !a.disabled) { casinoBet = Number(a.dataset.amt); sfx.tick(); return openCasino(); }
+      const z = e.target.closest('[data-zone]');
+      if (z) { casinoZone = z.dataset.zone; sfx.coin(); return openCasino(); }
+      if (e.target.closest('[data-open]') && casinoZone) { const pick = casinoZone; casinoZone = null; closeModal(); return send({ type: 'bet', amount: casinoBet, pick }); }
+      if (e.target.closest('[data-leave]')) { casinoZone = null; closeModal(); send({ type: 'skip' }); }
     };
   }
 

@@ -223,7 +223,7 @@ input, select {
 
 /* ---------- 事件舞台（中央弹出） ---------- */
 .stage {
-  position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; cursor: pointer;
+  position: absolute; inset: 0; z-index: 4; color: #fff; display: grid; place-items: center; cursor: pointer;
   background: rgba(10, 40, 20, .55); backdrop-filter: blur(.3cqmin); animation: fadein .25s;
 }
 @keyframes fadein { from { opacity: 0; } }
@@ -756,3 +756,128 @@ input, select {
 .wh-fx { position: absolute; left: 0; right: 0; top: 30%; height: 0; pointer-events: none; }
 .confetti { position: absolute; top: 0; width: 1.4cqmin; height: 2.2cqmin; border-radius: .3cqmin; animation: confetti 1.6s ease-out forwards; }
 @keyframes confetti { 0% { transform: translate(0, 0) rotate(0); opacity: 1; } 25% { transform: translate(calc(var(--dx) * .5), -18cqmin) rotate(calc(var(--r) * .4)); } 100% { transform: translate(var(--dx), var(--dy)) rotate(var(--r)); opacity: 0; } }
+
+/* ---------- 手牌：按类别配色的小卡 ---------- */
+.dock .card-chip { border-color: var(--cc, var(--line)); background: linear-gradient(color-mix(in srgb, var(--cc, #fff) 22%, #fff) 0 55%, #fff 55%); box-shadow: 0 3px 0 color-mix(in srgb, var(--cc, #ccc) 70%, #000); }
+.dock .card-chip.usable { border-color: var(--cc); box-shadow: 0 3px 0 color-mix(in srgb, var(--cc) 70%, #000), 0 0 12px color-mix(in srgb, var(--cc) 60%, transparent); }
+.dock .card-chip:not(.usable) { filter: saturate(.5); opacity: .8; }
+
+/* ---------- 使用道具窗口 ---------- */
+.use-card { display: flex; gap: 18px; align-items: flex-start; }
+.use-card .gcard.big { width: 190px; flex: none; transform: rotate(-3deg); animation: dealcard .45s cubic-bezier(.2, 1.4, .4, 1); }
+.use-card .gcard.big .gc-art { height: 120px; }
+.use-card .gcard.big .gc-em { font-size: 4rem; }
+.use-card .gcard.big .gc-body { padding-bottom: 12px; }
+@keyframes dealcard { from { transform: translateY(40px) rotate(-14deg) scale(.7); opacity: 0; } }
+.use-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.use-title { font-family: var(--display); font-size: 1.35rem; }
+.use-reason { font-weight: 700; color: var(--muted); margin: 6px 0; }
+.use-preview { background: #fff6dc; border: 2px dashed var(--gold); border-radius: 12px; padding: 10px 12px; font-weight: 700; line-height: 1.5; }
+.use-preview b.up, .tgt .pv b.up { color: var(--good); }
+.use-preview b.down, .tgt .pv b.down { color: var(--bad); }
+.use-panel .cta { flex: none; }
+.tgt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.tgt {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 14px; cursor: pointer; text-align: center;
+  background: linear-gradient(color-mix(in srgb, var(--pc) 14%, #fff), #fff); border: 2.5px solid color-mix(in srgb, var(--pc) 50%, #fff); transition: transform .12s;
+}
+.tgt:hover { transform: translateY(-3px); border-color: var(--pc); box-shadow: 0 6px 14px color-mix(in srgb, var(--pc) 35%, transparent); }
+.tgt .av { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 1.6rem; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--pc) 35%, #fff), var(--pc)); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--pc); }
+.tgt b { color: color-mix(in srgb, var(--pc) 75%, #000); font-size: .92rem; }
+.tgt small { color: var(--muted); font-size: .75rem; }
+.tgt .pv { font-size: .8rem; font-weight: 700; }
+.use-panel .dice-pick { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); max-height: 52vh; overflow-y: auto; padding: 2px; }
+.dopt { text-align: left; border: 2px solid var(--line); background: #fff; border-radius: 12px; padding: 6px 9px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.dopt:hover { border-color: var(--accent); background: #fff6ef; }
+.dopt > b { font-family: var(--display); font-size: 1.5rem; color: var(--accent); line-height: 1; }
+@media (max-width: 560px) {
+  .use-card { flex-direction: column; align-items: center; }
+  .use-card .gcard.big { width: 160px; }
+  .use-panel { width: 100%; }
+}
+
+/* ---------- 道具使用特效 ---------- */
+.ev-usecard { display: flex; flex-direction: column; align-items: center; gap: 2cqmin; }
+.ev-usecard .gcard { width: 34cqmin; animation: usecard .55s cubic-bezier(.2, 1.4, .4, 1); box-shadow: 0 0 6cqmin color-mix(in srgb, var(--cc) 70%, transparent), 0 2cqmin 4cqmin rgba(0,0,0,.4); }
+.ev-usecard .gc-art { height: 18cqmin; }
+.ev-usecard .gc-em { font-size: 11cqmin; }
+.ev-usecard .gc-body b { font-size: 4cqmin; }
+.ev-usecard .gc-body p { font-size: 2.2cqmin; }
+.ev-usecard .txt { font-size: 3cqmin; font-weight: 800; background: rgba(0,0,0,.45); padding: 1cqmin 3cqmin; border-radius: 3cqmin; max-width: 70cqmin; text-align: center; }
+@keyframes usecard { 0% { transform: translateY(40cqmin) rotateY(180deg) scale(.4); } 100% { transform: none; } }
+
+/* ---------- 赌场下注 ---------- */
+.modal.casino-modal .modal-box { width: min(620px, 100%); padding: 0; overflow: hidden; }
+.casino { display: flex; flex-direction: column; }
+.cs-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 48px 14px 18px; background: linear-gradient(#3a1d0f, #2a140a); color: #ffe066; border-bottom: 4px solid #d4a017; }
+.cs-sign { font-family: var(--display); font-size: 1.8rem; text-shadow: 0 0 12px rgba(255, 200, 0, .6); line-height: 1.1; }
+.cs-sign small { display: block; font-family: inherit; font-size: .8rem; color: #e9d8b0; text-shadow: none; }
+.cs-cash { background: rgba(255,255,255,.1); border: 1.5px solid #d4a017; border-radius: 12px; padding: 4px 12px; text-align: center; line-height: 1.15; }
+.cs-cash small { display: block; font-size: .7rem; color: #e9d8b0; }
+.cs-cash b { font-size: 1.2rem; }
+.cs-felt {
+  padding: 18px; background: radial-gradient(ellipse at 50% 40%, #2fa66a, #136339 75%); box-shadow: inset 0 0 40px rgba(0,0,0,.4);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.cs-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cs-zone {
+  position: relative; border: 3px dashed rgba(255,255,255,.7); border-radius: 18px; background: rgba(255,255,255,.08); color: #fff; cursor: pointer;
+  padding: 18px 8px 22px; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: background .15s, transform .12s;
+}
+.cs-zone b { font-family: var(--display); font-size: 3.2rem; line-height: 1; font-weight: 400; text-shadow: 0 3px 0 rgba(0,0,0,.25); }
+.cs-zone.big b { color: #ffcf4a; }
+.cs-zone.small b { color: #9ad8ff; }
+.cs-zone small { font-weight: 700; opacity: .9; }
+.cs-zone:hover { background: rgba(255,255,255,.16); transform: translateY(-2px); }
+.cs-zone.on { border-style: solid; border-color: #ffe066; background: rgba(255, 224, 102, .2); box-shadow: 0 0 0 4px rgba(255, 224, 102, .3), 0 0 24px rgba(255, 224, 102, .5); }
+.cs-zone .placed { position: absolute; right: 12px; bottom: 10px; animation: chipdrop .35s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes chipdrop { from { transform: translateY(-40px) scale(1.4); opacity: 0; } }
+.cs-rule { text-align: center; color: #e8ffe9; font-size: .82rem; font-weight: 700; }
+.cs-chips { display: flex; align-items: center; justify-content: center; gap: 14px; color: #fff; font-weight: 800; }
+.chipbtn { border: none; background: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #fff; font-weight: 800; transition: transform .12s; }
+.chipbtn small { font-size: .75rem; }
+.chipbtn.on { transform: translateY(-6px); }
+.chipbtn.on .chip3 { box-shadow: 0 0 0 4px #ffe066, 0 6px 0 rgba(0,0,0,.35); }
+.chipbtn:disabled { opacity: .35; cursor: not-allowed; }
+.chip3 {
+  width: 54px; height: 54px; border-radius: 50%; display: inline-grid; place-items: center; vertical-align: middle;
+  background: repeating-conic-gradient(var(--ch) 0 30deg, #fff 30deg 45deg); box-shadow: 0 5px 0 rgba(0,0,0,.35);
+}
+.chip3 i { width: 72%; height: 72%; border-radius: 50%; background: var(--ch); border: 2px dashed rgba(255,255,255,.75); display: grid; place-items: center; font-style: normal; font-weight: 900; color: #fff; font-size: .82rem; }
+.cs-actions { display: flex; gap: 10px; padding: 14px 18px 16px; background: var(--card); flex-wrap: wrap; }
+.cs-actions .cta { font-size: 1.25rem; }
+.cs-actions .cta.ghost { flex: 0 0 auto; min-width: 120px; }
+
+/* ---------- 赌场开奖 ---------- */
+.cs-show { display: flex; flex-direction: column; align-items: center; gap: 2cqmin; position: relative; color: #fff; text-shadow: 0 .3cqmin .6cqmin rgba(0,0,0,.6); }
+.cs-title { font-size: 3.6cqmin; font-weight: 800; display: flex; align-items: center; gap: 1.2cqmin; }
+.cs-title .chip3 { width: 6cqmin; height: 6cqmin; }
+.cs-title .chip3 i { font-size: 1.6cqmin; }
+.cs-title b { font-family: var(--display); font-weight: 400; font-size: 5.4cqmin; }
+.cs-show b.big, .cs-sum b.big { color: #ffcf4a; }
+.cs-show b.small, .cs-sum b.small { color: #9ad8ff; }
+.cs-table {
+  position: relative; width: 64cqmin; height: 30cqmin; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(ellipse, #2fa66a, #136339 70%); border: 1.6cqmin solid #6b3a1a; box-shadow: 0 2cqmin 4cqmin rgba(0,0,0,.5), inset 0 0 4cqmin rgba(0,0,0,.4);
+}
+.cs-dice { --s: 10cqmin; display: flex; gap: 3cqmin; }
+.cs-dice .die3d-wrap { width: var(--s); height: var(--s); perspective: 60cqmin; }
+.cs-cup {
+  position: absolute; left: 50%; bottom: 9cqmin; width: 38cqmin; height: 26cqmin; margin-left: -19cqmin; z-index: 2;
+  border-radius: 48% 48% 14% 14% / 70% 70% 14% 14%; background: radial-gradient(circle at 35% 25%, #ff8a6b, #c8211b 55%, #7a1010);
+  box-shadow: inset 0 -2cqmin 0 #d4a017, 0 2cqmin 3cqmin rgba(0,0,0,.45); transition: transform .45s cubic-bezier(.3, .7, .3, 1), opacity .45s;
+}
+.cs-cup i { position: absolute; left: 50%; top: -3.5cqmin; width: 9cqmin; height: 6cqmin; margin-left: -4.5cqmin; border-radius: 50% 50% 30% 30%; background: radial-gradient(circle at 35% 30%, #ffe28a, #d4a017); }
+.cs-cup.shaking { animation: cupshake .12s linear infinite; }
+@keyframes cupshake { 0% { transform: translate(-1.5cqmin, 0) rotate(-6deg); } 50% { transform: translate(1.5cqmin, -1cqmin) rotate(6deg); } 100% { transform: translate(-1.5cqmin, 0) rotate(-6deg); } }
+.cs-cup.lift { transform: translateY(-34cqmin) rotate(-12deg); opacity: 0; }
+.cs-sum { min-height: 7cqmin; font-family: var(--display); font-size: 5.6cqmin; color: #fff; text-shadow: 0 .4cqmin 0 rgba(0,0,0,.35); animation: popin .35s; }
+.cs-sum .cheat { color: #ffe066; }
+.cs-sum .leo { color: #ff8a8a; }
+.cs-zones.mini { display: flex; gap: 3cqmin; }
+.cs-zones.mini .cs-zone { cursor: default; padding: 1cqmin 3cqmin; font-size: 2.6cqmin; font-weight: 800; border-width: .4cqmin; border-radius: 2cqmin; }
+.cs-zones.mini .cs-zone.hit { border-style: solid; border-color: #ffe066; background: rgba(255, 224, 102, .3); box-shadow: 0 0 3cqmin rgba(255, 224, 102, .7); }
+.cs-res { font-size: 4.4cqmin; font-weight: 900; padding: 1.2cqmin 4cqmin; border-radius: 4cqmin; background: rgba(0,0,0,.45); opacity: 0; }
+.cs-res.show { opacity: 1; animation: popin .45s cubic-bezier(.2, 1.6, .4, 1); }
+.cs-res.good b { color: #8dffb1; }
+.cs-res.bad b { color: #ff8a8a; }

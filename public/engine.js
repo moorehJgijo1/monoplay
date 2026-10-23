@@ -702,7 +702,7 @@
     const tp = tj >= 0 ? s.players[tj] : null;
     const say = (text, tone = 'info') => {
       log(s, `${card.emoji} ${p.name} 使用${card.name}：${text}`);
-      fx(s, card.emoji, card.name, `${p.name}：${text}`, tone, i);
+      fx(s, card.emoji, card.name, `${p.name}：${text}`, tone, i, { card: key });
     };
     switch (key) {
       case 'remote': s.forcedDice = target; say(`本回合将掷出 ${target} 点`); break;
@@ -924,19 +924,20 @@
         const throwDice = () => [randInt(s, 1, 6), randInt(s, 1, 6), randInt(s, 1, 6)];
         const wins = d => !(d[0] === d[1] && d[1] === d[2]) && (d[0] + d[1] + d[2] >= 11) === big;
         let d = throwDice();
-        let cheated = false;
-        if (!wins(d) && p.char === 'laoqian') { d = throwDice(); cheated = true; }
+        let first = null;
+        if (!wins(d) && p.char === 'laoqian') { first = d; d = throwDice(); }
+        const cheated = !!first;
         const sum = d[0] + d[1] + d[2];
         const desc = `${d.join('·')}=${sum}${d[0] === d[1] && d[1] === d[2] ? '（豹子，庄家通吃）' : sum >= 11 ? '（大）' : '（小）'}`;
         s.casinoDice = d;
         if (wins(d)) {
           p.cash += amt;
           log(s, `🎰 ${p.name} 押${big ? '大' : '小'} ${money(amt)}，开出 ${desc}，赢了！${cheated ? '（出千成功 🎩）' : ''}`);
-          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，赢了 ${money(amt)}！`, 'good', i, { dice: d, big, amt });
+          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，赢了 ${money(amt)}！`, 'good', i, { dice: d, first, big, amt });
         } else {
           p.cash -= amt;
           log(s, `🎰 ${p.name} 押${big ? '大' : '小'} ${money(amt)}，开出 ${desc}，输了`);
-          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，输掉 ${money(amt)}`, 'bad', i, { dice: d, big, amt });
+          fx(s, '🎰', '赌场', `${p.name} 开出 ${desc}，输掉 ${money(amt)}`, 'bad', i, { dice: d, first, big, amt });
         }
         s.phase = 'done';
         settle(s);
@@ -975,7 +976,7 @@
     if (CARD_TITLES.has(f.title)) return 'item';
     return 'toast';
   }
-  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 6000, casino: 3000, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
+  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 6000, casino: 4600, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
   const paceMark = s => ({ seq: s.seq, dice: s.diceSeq || 0, turn: s.turn });
   // 估算从 mark 之后的新动画（走棋、骰子、事件、换人）需要播放多少毫秒
   function paceMs(s, mark) {
