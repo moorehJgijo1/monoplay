@@ -859,20 +859,28 @@ export function createBoard3D(container, E, opts = {}) {
     dice.forEach((b, k) => b.addEventListener('collide', e => {
       const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
       if (v > 1.2 && time - lastHit[k] > 0.05) { hits.push({ t: time, v, x: b.position.x, z: b.position.z }); lastHit[k] = time; }
-      // 从高处落下撞击很猛，棱角着地会把骰子踢飞很远。像落在软桌面上一样：
-      // 第一次着地吸收大部分速度和旋转，第二次再吸收一些；之后照常弹跳翻滚，并加点滚动阻力
+      // 物理引擎里方块棱角着地时，能量几乎都变成了水平翻滚，竖直方向弹不起来。
+      // 所以前三次往下撞的时候直接给一个向上的速度，按落地速度一次比一次弱（约 1.7、0.8、0.3 个单位高），
+      // 同时每次削掉大部分水平速度，让骰子弹几下后停在玩家附近
       if (e.body.type !== CANNON.Body.STATIC) return; // 两颗骰子在空中互碰不算着地
-      b.hitCount = (b.hitCount || 0) + 1;
-      if (b.hitCount <= 2) {
-        const keep = b.hitCount === 1 ? 0.4 : 0.7;
-        b.velocity.scale(keep, b.velocity);
-        b.angularVelocity.scale(keep, b.angularVelocity);
+      if (b.velocity.y < -1.5) {
+        b.bounces = (b.bounces || 0) + 1;
+        if (!b.vFall) b.vFall = -b.velocity.y;
+        const k = [0.42, 0.28, 0.17][b.bounces - 1];
+        if (k) b.velocity.y = b.vFall * k;
+        b.velocity.x *= 0.35;
+        b.velocity.z *= 0.35;
+        b.angularVelocity.scale(0.75, b.angularVelocity);
+      } else if (b.bounces >= 3) {
+        // 弹完以后贴地翻滚：每次接触都减一点速，不会一路滚出去
+        b.velocity.x *= 0.96;
+        b.velocity.z *= 0.96;
+        b.angularVelocity.scale(0.96, b.angularVelocity);
       }
-      // 撞到格子边缘、房子时水平速度最多 3.5：照样弹跳翻滚，但不会被踢飞到画面外
+      // 撞到格子边缘、房子时水平速度最多 2.8：照样弹跳翻滚，但不会被踢飞到画面外
       const hv = Math.hypot(b.velocity.x, b.velocity.z);
-      if (hv > 3.5) { b.velocity.x *= 3.5 / hv; b.velocity.z *= 3.5 / hv; }
-      b.linearDamping = Math.max(b.linearDamping, 0.35);
-      b.angularDamping = Math.max(b.angularDamping, 0.3);
+      if (hv > 2.8) { b.velocity.x *= 2.8 / hv; b.velocity.z *= 2.8 / hv; }
+      b.angularDamping = Math.max(b.angularDamping, 0.2);
     }));
     const frames = [];
     const STEP = 1 / 120;
