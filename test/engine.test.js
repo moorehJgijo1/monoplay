@@ -33,7 +33,7 @@ function play(seed, n, maxRounds) {
 }
 
 test('AI-only games run to completion', () => {
-  for (let seed = 1; seed <= 150; seed++) play(seed, 2 + (seed % 5), seed % 3 ? 30 : 0);
+  for (let seed = 1; seed <= 150; seed++) play(seed, 2 + (seed % 3), seed % 3 ? 30 : 0);
 });
 
 test('same seed gives same game', () => {

@@ -252,15 +252,15 @@ export function createBoard3D(container, E, opts = {}) {
       const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
       // 无主的地是中性的石板色；只有被买下后才染成地主的颜色（颜色只用来区分玩家）
       const grp = GROUPS[c.group];
+      // 被买下的格子整块涂满地主的颜色（白字），远看也能一眼分清是谁的
       g.fillStyle = owner ? owner.color : '#f1ece0';
       g.fillRect(0, 0, 256, 256);
-      if (owner) { g.fillStyle = 'rgba(255,255,255,.72)'; g.fillRect(14, 14, 228, 228); }
-      g.fillStyle = owner ? owner.color : '#5b6472';
+      g.fillStyle = owner ? 'rgba(0,0,0,.28)' : '#5b6472';
       g.fillRect(0, 0, 256, 78);
       g.fillStyle = '#fff';
       g.font = `bold ${c.name.length > 2 ? 46 : 54}px ${FONT}`;
       g.fillText(c.name, 128, 42);
-      g.fillStyle = owner ? '#222' : '#6b5a45';
+      g.fillStyle = owner ? '#ffffff' : '#6b5a45';
       g.font = `bold 34px ${FONT}`;
       g.fillText(`${grp.name} · ${owner ? '过路费' : '地价'}`, 128, 118);
       g.font = `bold 50px ${FONT}`;
@@ -268,7 +268,7 @@ export function createBoard3D(container, E, opts = {}) {
       g.fillText(v >= 10000 ? '¥' + (v / 10000).toFixed(1).replace(/\.0$/, '') + '万' : '¥' + v.toLocaleString('en-US'), 128, 170);
       if (owner) {
         g.font = `40px ${FONT}`;
-        g.fillStyle = '#f0a500';
+        g.fillStyle = '#fff3a0';
         g.fillText('★'.repeat(ld.level) + '☆'.repeat(5 - ld.level), 128, 222);
       }
     } else {
@@ -286,7 +286,7 @@ export function createBoard3D(container, E, opts = {}) {
       g.font = `bold ${c.name.length > 3 ? 40 : 48}px ${FONT}`;
       g.fillText(c.name, 128, 212);
     }
-    g.strokeStyle = 'rgba(0,0,0,.25)';
+    g.strokeStyle = c.type === 'land' && s.lands[i].owner !== null ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.25)';
     g.lineWidth = 8;
     g.strokeRect(4, 4, 248, 248);
     t.top.tex.needsUpdate = true;
@@ -410,8 +410,8 @@ export function createBoard3D(container, E, opts = {}) {
       top = 6.3;
     }
     // 小旗子
-    add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.6, 6), std('#666')), 0.62, 0.3, 0.62);
-    add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.02), roof), 0.79, 0.5, 0.62);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6), std('#666')), 0.62, 0.45, 0.62);
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.03), roof), 0.88, 0.74, 0.62);
     g.userData.top = top;
     return g;
   }
@@ -457,7 +457,7 @@ export function createBoard3D(container, E, opts = {}) {
     lot.key = key;
     lot.prev = { level: ld.level, owner: ld.owner };
     lot.holder.clear();
-    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.72) : '#d9d1bf');
+    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.25) : '#d9d1bf');
     const b = owner ? makeBuilding(ld.level, owner.color) : saleSign();
     lot.blink = null;
     b.traverse(o => { o.userData.cell = i; if (o.userData.blink) lot.blink = o; });

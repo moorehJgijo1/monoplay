@@ -9,7 +9,7 @@ const AI = require('./public/ai.js');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
-const MAX_SEATS = 6;
+const MAX_SEATS = 4;
 const BOT_NAMES = ['电脑·小强', '电脑·阿财', '电脑·旺旺', '电脑·多多', '电脑·招财', '电脑·发发'];
 
 const rooms = new Map();

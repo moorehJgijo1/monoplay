@@ -125,7 +125,7 @@ import { sfx, setSoundEnabled } from './sound.js';
   });
 
   // 单机座位
-  let soloSeats = store.get('mono.soloSeats', null) || [{ kind: 'bot', char: '' }, { kind: 'bot', char: '' }, { kind: 'bot', char: '' }];
+  let soloSeats = (store.get('mono.soloSeats', null) || [{ kind: 'bot', char: '' }, { kind: 'bot', char: '' }, { kind: 'bot', char: '' }]).slice(0, 3);
   const charOptions = (sel, exclude = []) => `<option value="">随机角色</option>` + CHAR_KEYS.map(k =>
     `<option value="${k}" ${k === sel ? 'selected' : ''} ${exclude.includes(k) && k !== sel ? 'disabled' : ''}>${CHARACTERS[k].emoji} ${CHARACTERS[k].name}</option>`).join('');
   function renderSoloSeats() {
@@ -139,7 +139,7 @@ import { sfx, setSoundEnabled } from './sound.js';
           : `<input class="nm" data-name="${k}" value="${esc(s.name || '')}" placeholder="同屏玩家 ${k + 2}" maxlength="12">`}
         <select data-char="${k}">${charOptions(s.char, used)}</select>
         <button class="btn small" data-del="${k}">✕</button></div>`).join('');
-    $('#addBotBtn').disabled = $('#addLocalBtn').disabled = soloSeats.length >= 5;
+    $('#addBotBtn').disabled = $('#addLocalBtn').disabled = soloSeats.length >= 3;
     $('#soloStartBtn').disabled = soloSeats.length < 1;
     store.set('mono.soloSeats', soloSeats);
   }
@@ -353,13 +353,13 @@ import { sfx, setSoundEnabled } from './sound.js';
         ${canPick ? `<select data-seat-char="${s.id}">${charOptions(s.char, used)}</select>` : `<span class="hint">${s.char ? CHARACTERS[s.char].name : '随机角色'}</span>`}
       </div>`;
     });
-    for (let k = room.seats.length; k < 6; k++) seats.push(`<div class="lobby-seat empty"><span class="av">＋</span><span class="hint wait-dots">等待加入</span></div>`);
+    for (let k = room.seats.length; k < 4; k++) seats.push(`<div class="lobby-seat empty"><span class="av">＋</span><span class="hint wait-dots">等待加入</span></div>`);
     $('#lobbySeats').innerHTML = seats.join('');
     $('#hostControls').classList.toggle('hidden', !isHost);
     $('#lobbyWait').classList.toggle('hidden', isHost);
     $('#lobbyRounds').value = room.settings.maxRounds;
     $('#lobbyCash').value = room.settings.startingCash;
-    $('#lobbyAddBot').disabled = room.seats.length >= 6;
+    $('#lobbyAddBot').disabled = room.seats.length >= 4;
     $('#lobbyStart').disabled = room.seats.length < 2;
     $('#lobbyStart').textContent = room.seats.length < 2 ? '至少需要 2 名玩家' : `开始游戏（${room.seats.length} 人）`;
   }

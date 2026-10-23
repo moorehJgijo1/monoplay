@@ -131,7 +131,8 @@
   };
   const CARD_KEYS = Object.keys(CARDS);
 
-  const PLAYER_COLORS = ['#e53935', '#1e88e5', '#43a047', '#f9a825', '#8e24aa', '#00897b'];
+  // 最多 4 人。颜色选色相和明度都拉得开的大红、宝蓝、翠绿（比草地深）、琥珀黄
+  const PLAYER_COLORS = ['#e3262e', '#1d5fe0', '#0b9152', '#ffae00'];
 
   // ---------- 随机数（种子存在状态里，可序列化/可复现） ----------
   function rand(s) {
@@ -151,7 +152,7 @@
 
   // ---------- 创建 ----------
   function createGame(players, opts = {}) {
-    if (players.length < 2 || players.length > 6) throw new Error('需要 2–6 名玩家');
+    if (players.length < 2 || players.length > 4) throw new Error('需要 2–4 名玩家');
     const s = {
       rng: (opts.seed ?? Math.floor(Math.random() * 2 ** 31)) | 0,
       players: [],
