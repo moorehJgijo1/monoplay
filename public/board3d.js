@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
 import * as CANNON from './vendor/cannon-es.js';
+import { buildCharacter } from './characters.js';
 
 const U = 2; // 相邻路口的间距
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
@@ -499,17 +500,20 @@ export function createBoard3D(container, E, opts = {}) {
   function makePiece(p) {
     const g = new THREE.Group();
     const col = new THREE.Color(p.color);
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.16, 24), std(col.clone().multiplyScalar(0.75)));
-    base.position.y = 0.08;
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.4, 0.8, 20), std(col, { roughness: 0.45 }));
-    body.position.y = 0.56;
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.06, 8, 20), std('#ffffff'));
-    collar.rotation.x = Math.PI / 2;
-    collar.position.y = 0.96;
-    [base, body, collar].forEach(m => { m.castShadow = true; g.add(m); });
-    const head = emojiSprite(CHARACTERS[p.char].emoji, 1.25);
-    head.position.y = 1.5;
-    g.add(head);
+    // 脚下的彩色底座代表玩家颜色，上面站着角色的 3D 模型
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.12, 28), std(col.clone().multiplyScalar(0.8), { roughness: 0.4 }));
+    base.position.y = 0.06;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.035, 8, 32), std('#ffffff', { roughness: 0.3 }));
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.12;
+    [base, rim].forEach(m => { m.castShadow = true; g.add(m); });
+    const ch = buildCharacter(p.char);
+    ch.root.position.y = 0.12;
+    g.add(ch.root);
+    const status = emojiSprite('💤', 0.7);
+    status.position.set(-0.55, 2.0, 0);
+    status.visible = false;
+    g.add(status);
     const tag = textSprite(p.name, p.color, '#fff', 0.5);
     tag.position.y = 2.45;
     g.add(tag);
@@ -528,7 +532,7 @@ export function createBoard3D(container, E, opts = {}) {
     bubble.visible = false;
     g.add(bubble);
     scene.add(g);
-    return { group: g, head, tag, arrow, ring, bubble, moving: false };
+    return { group: g, ch, status, statusKey: '', tag, arrow, ring, bubble, moving: false, phase: Math.random() * 6 };
   }
   function pieceTarget(k) {
     const cell = posArr[k];
@@ -695,6 +699,25 @@ export function createBoard3D(container, E, opts = {}) {
       if (pc.arrow.visible) { pc.arrow.position.y = 3.2 + Math.sin(clock.t * 4) * 0.18; pc.arrow.rotation.y += dt * 2; }
       if (pc.ring.visible) { const s = 1 + (Math.sin(clock.t * 4) + 1) * 0.12; pc.ring.scale.setScalar(s); }
       if (pc.bubble.visible) pc.bubble.position.y = 2.0 + Math.sin(clock.t * 5) * 0.08;
+      if (pc.status.visible) pc.status.position.y = 2.0 + Math.sin(clock.t * 3) * 0.06;
+      // 角色动作：走路时摆臂迈腿，站着时轻轻呼吸，并慢慢转身面向镜头
+      const t = clock.t + pc.phase, ch = pc.ch;
+      if (pc.moving) {
+        const w = Math.sin(t * 16);
+        ch.arms[0].rotation.x = w * 0.9; ch.arms[1].rotation.x = -w * 0.9;
+        ch.legs[0].rotation.x = -w * 0.7; ch.legs[1].rotation.x = w * 0.7;
+        ch.head.rotation.z = 0;
+      } else {
+        const w = Math.sin(t * 2);
+        ch.arms[0].rotation.x = w * 0.08; ch.arms[1].rotation.x = -w * 0.08;
+        ch.legs[0].rotation.x = 0; ch.legs[1].rotation.x = 0;
+        ch.head.rotation.z = Math.sin(t * 1.3) * 0.06;
+        ch.root.position.y = 0.12 + Math.abs(Math.sin(t * 2)) * 0.02;
+        const want = Math.atan2(camera.position.x - pc.group.position.x, camera.position.z - pc.group.position.z);
+        let d = want - pc.group.rotation.y;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        pc.group.rotation.y += d * Math.min(1, dt * 4);
+      }
     });
     Object.values(lots).forEach(l => { if (l.blink) l.blink.visible = Math.sin(clock.t * 4) > 0; });
     Object.values(markers).forEach(m => { m.sprite.position.y = m.base + Math.sin(clock.t * 2.5 + m.phase) * (m.kind === 'god' ? 0.2 : 0.03); });
@@ -1017,7 +1040,13 @@ export function createBoard3D(container, E, opts = {}) {
         pc.tagScale = isActive ? 1.25 : 0.8;
         pc.tag.scale.multiplyScalar(pc.tagScale);
         pc.bubble.visible = k === thinking;
-        pc.head.material.color.set(s.players[k].stay > 0 ? '#999' : '#fff');
+        // 坐牢 / 住院 / 冬眠时头顶冒出对应的图标
+        const p = s.players[k], st = p.stay > 0 ? (p.stayAt === 'jail' ? '🚔' : p.stayAt === 'hospital' ? '🏥' : '💤') : '';
+        if (st !== pc.statusKey) {
+          pc.statusKey = st;
+          pc.status.visible = !!st;
+          if (st) pc.status.material.map = emojiTexture(st);
+        }
       });
       if (active !== null && active !== undefined) focus = active;
     },
