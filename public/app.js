@@ -55,6 +55,7 @@ import { sfx, setSoundEnabled } from './sound.js';
   let modalKind = null;
   function openModal(kind, html) {
     modalKind = kind;
+    $('#modal').classList.toggle('wide', kind === 'shop');
     $('#modalBody').innerHTML = html;
     $('#modal').classList.remove('hidden');
   }
@@ -225,6 +226,8 @@ import { sfx, setSoundEnabled } from './sound.js';
 
   function startLocal(setup, saved) {
     if (ctrl) ctrl.leave();
+    // 旧存档里可能有已经下架的道具卡，去掉
+    if (saved) saved.players.forEach(p => { p.cards = p.cards.filter(k => CARDS[k]); });
     const state = saved || E.createGame(setup.players, { maxRounds: setup.maxRounds, startingCash: setup.startingCash });
     ctrl = new LocalController(state, setup);
     resetView();
@@ -1167,18 +1170,42 @@ import { sfx, setSoundEnabled } from './sound.js';
   }
 
   // ---------- 道具店 / 赌场 ----------
+  // 道具店：分类标签 + 卡牌式商品；状态变化时会重绘，所以记住当前分类、滚动位置和刚买的卡
+  let shopCat = 'all', shopJust = null;
   function openShop() {
     const s = ctrl.state, me = viewer(s), p = s.players[me];
-    openModal('shop', `<h2>🏪 道具店 <small class="hint">🎟️ ${p.points} 点券 · 手牌 ${p.cards.length}/${E.MAX_CARDS}</small></h2>
-      <div class="shop-grid">${CARD_KEYS.map(k => {
-        const c = CARDS[k], price = E.cardPrice(s, me, k);
-        return `<div class="shop-item"><span class="em">${c.emoji}</span><b>${c.name}</b><small>${c.desc}</small>
-          <button class="btn small ${price <= p.points ? 'primary' : ''}" data-buy="${k}" ${price > p.points || p.cards.length >= E.MAX_CARDS ? 'disabled' : ''}>🎟️ ${price}</button></div>`;
+    const old = $('#modalBody .shop-items');
+    const scroll = modalKind === 'shop' && old ? old.scrollTop : 0;
+    const full = p.cards.length >= E.MAX_CARDS;
+    const cats = [['all', '全部', '🛍️'], ...Object.entries(E.CARD_CATS).map(([k, c]) => [k, c.name, c.emoji])];
+    const keys = CARD_KEYS.filter(k => shopCat === 'all' || CARDS[k].cat === shopCat);
+    openModal('shop', `<div class="shop">
+      <div class="shop-head">
+        <div class="shop-sign"><span>🏪</span><div><b>欢乐道具店</b><small>${p.char === 'xiaomei' ? '孙小美专享 7 折！' : '用点券换道具，掷骰前使用'}</small></div></div>
+        <div class="shop-wallet"><div class="pts"><small>我的点券</small><b>🎟️ ${p.points}</b></div><div class="hand"><small>手牌</small><b>${p.cards.length}/${E.MAX_CARDS}</b></div></div>
+      </div>
+      <div class="shop-tabs">${cats.map(([k, n, em]) => `<button class="${k === shopCat ? 'on' : ''}" data-cat="${k}" style="--cc:${k === 'all' ? '#7a5c3a' : E.CARD_CATS[k].color}">${em} ${n}</button>`).join('')}</div>
+      ${full ? '<div class="shop-warn">手牌已满（最多 8 张），先用掉一些再来买吧</div>' : ''}
+      <div class="shop-items">${keys.map(k => {
+        const c = CARDS[k], cat = E.CARD_CATS[c.cat], price = E.cardPrice(s, me, k);
+        const own = p.cards.filter(x => x === k).length, poor = price > p.points;
+        const ok = !poor && !full;
+        return `<div class="gcard ${ok ? '' : 'off'} ${shopJust === k ? 'just' : ''}" style="--cc:${cat.color}">
+          <div class="gc-art"><span class="gc-cat">${cat.emoji} ${cat.name}</span>${own ? `<span class="gc-own">已有 ×${own}</span>` : ''}<span class="gc-em">${c.emoji}</span></div>
+          <div class="gc-body"><b>${c.name}</b><p>${c.desc}</p></div>
+          <button class="gc-buy" data-buy="${k}" ${ok ? '' : 'disabled'}>${price < c.price ? `<s>${c.price}</s>` : ''}🎟️ ${price}${poor ? '<small>点券不足</small>' : ''}</button>
+        </div>`;
       }).join('')}</div>
-      <div class="row"><button class="btn big" data-leave>离开道具店</button></div>`);
+      <div class="shop-foot"><button class="cta ghost" data-leave>离开道具店</button></div>
+    </div>`);
+    shopJust = null;
+    const list = $('#modalBody .shop-items');
+    if (list) list.scrollTop = scroll;
     $('#modalBody').onclick = e => {
+      const t = e.target.closest('[data-cat]');
+      if (t) { shopCat = t.dataset.cat; openShop(); $('#modalBody .shop-items').scrollTop = 0; return; }
       const b = e.target.closest('[data-buy]');
-      if (b) { sfx.coin(); send({ type: 'shopBuy', card: b.dataset.buy }); }
+      if (b && !b.disabled) { sfx.coin(); shopJust = b.dataset.buy; send({ type: 'shopBuy', card: b.dataset.buy }); }
       if (e.target.closest('[data-leave]')) { closeModal(); send({ type: 'skip' }); }
     };
   }
@@ -1202,9 +1229,12 @@ import { sfx, setSoundEnabled } from './sound.js';
   // 根据状态自动打开/关闭道具店、赌场与结算弹窗
   function syncModals(s) {
     const mine = canAct(s);
-    if (modalKind === 'shop') { if (!mine || s.phase !== 'shop') closeModal(); else openShop(); }
-    if (modalKind === 'casino' && (!mine || s.phase !== 'casino')) closeModal();
-    if ((modalKind === 'target' || modalKind === 'card') && (!mine || s.phase !== 'roll')) closeModal();
+    // 已经开着的弹窗只看“是不是还轮到我”，不受动画影响（买东西会触发一小段动画，不能因此把商店关掉）
+    const a = E.pendingActor(s), me = viewer(s);
+    const stillMine = a !== null && a === me && !s.players[me].auto;
+    if (modalKind === 'shop') { if (!stillMine || s.phase !== 'shop') closeModal(); else openShop(); }
+    if (modalKind === 'casino' && (!stillMine || s.phase !== 'casino')) closeModal();
+    if ((modalKind === 'target' || modalKind === 'card') && (!stillMine || s.phase !== 'roll')) closeModal();
     if (!modalKind && mine && dismissedVisit !== visitKey()) {
       if (s.phase === 'shop') { dismissedVisit = visitKey(); openShop(); }
       if (s.phase === 'casino') { dismissedVisit = visitKey(); openCasino(); }

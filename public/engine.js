@@ -106,28 +106,30 @@
   const GOD_KEYS = Object.keys(GODS);
 
   // ---------- 道具卡 ----------
+  // 16 张道具，分 4 类：move 移动、trick 整人、land 地产、wealth 财富
+  const CARD_CATS = {
+    move:   { name: '移动', emoji: '🎲', color: '#2f80ed' },
+    trick:  { name: '整人', emoji: '😈', color: '#e8452c' },
+    land:   { name: '地产', emoji: '🏠', color: '#16a34a' },
+    wealth: { name: '财富', emoji: '💰', color: '#d99a00' },
+  };
   const CARDS = {
-    remote:    { name: '遥控骰子', emoji: '🎯', price: 30, target: 'dice', desc: '指定本回合掷出的点数（2–12）' },
-    roadblock: { name: '路障', emoji: '🚧', price: 20, target: 'cell', desc: '在周围 8 格内放路障，经过的人会被拦下' },
-    mine:      { name: '地雷', emoji: '💣', price: 40, target: 'cell', desc: '在周围 8 格内埋地雷，踩中的人住院 3 天' },
-    robot:     { name: '机器娃娃', emoji: '🤖', price: 20, target: 'none', desc: '清除周围 10 格内的路障和地雷' },
-    turn:      { name: '转向卡', emoji: '🔄', price: 20, target: 'player', self: true, desc: '让一位玩家（可以是自己）掉头走' },
-    stay:      { name: '停留卡', emoji: '⏸️', price: 30, target: 'none', desc: '本回合原地不动，再次触发脚下格子' },
-    turtle:    { name: '乌龟卡', emoji: '🐢', price: 30, target: 'player', self: true, desc: '目标接下来 3 回合每次只走 1 步' },
-    average:   { name: '均富卡', emoji: '⚖️', price: 80, target: 'none', desc: '所有玩家的现金重新平分' },
-    tax:       { name: '查税卡', emoji: '🧾', price: 40, target: 'player', desc: '目标被查税，缴纳现金的 30%' },
-    rob:       { name: '抢夺卡', emoji: '🦹', price: 40, target: 'player', desc: '随机抢走目标一张道具卡' },
-    free:      { name: '免费卡', emoji: '🎫', price: 30, target: 'passive', desc: '被动生效：自动免付一次过路费' },
-    buyland:   { name: '购地卡', emoji: '💵', price: 60, target: 'none', desc: '按总价强行买下脚下的对手地产' },
-    demolish:  { name: '拆屋卡', emoji: '🏚️', price: 40, target: 'cell', desc: '拆掉对手一块地产的一层建筑' },
-    monster:   { name: '怪兽卡', emoji: '🦖', price: 70, target: 'cell', desc: '怪兽出没！一块地产的建筑全部被毁' },
-    angelcard: { name: '天使卡', emoji: '😇', price: 60, target: 'cell', desc: '一整个片区的已有主地产各升一级' },
-    devilcard: { name: '恶魔卡', emoji: '👿', price: 80, target: 'cell', desc: '一整个片区的建筑全部摧毁' },
-    frame:     { name: '陷害卡', emoji: '👮', price: 50, target: 'player', desc: '诬告目标，让其入狱 2 天' },
-    sleep:     { name: '冬眠卡', emoji: '💤', price: 80, target: 'none', desc: '其他所有玩家冬眠 1 回合' },
-    dismiss:   { name: '送神符', emoji: '📿', price: 20, target: 'none', desc: '送走附在你身上的神仙' },
-    blame:     { name: '嫁祸卡', emoji: '🎭', price: 40, target: 'player', desc: '把你身上的神仙转嫁给目标' },
-    missile:   { name: '导弹', emoji: '🚀', price: 70, target: 'cell', desc: '轰炸任意格子：建筑清零，格子上的玩家住院 2 天' },
+    remote:    { cat: 'move', name: '遥控骰子', emoji: '🎯', price: 30, target: 'dice', desc: '指定本回合掷出的点数（2–12）' },
+    stay:      { cat: 'move', name: '停留卡', emoji: '⏸️', price: 30, target: 'none', desc: '本回合原地不动，再次触发脚下格子（比如再盖一次楼）' },
+    turtle:    { cat: 'move', name: '乌龟卡', emoji: '🐢', price: 30, target: 'player', self: true, desc: '目标接下来 3 回合每次只走 1 步' },
+    roadblock: { cat: 'trick', name: '路障', emoji: '🚧', price: 20, target: 'cell', desc: '在周围 8 格内放路障，经过的人会被拦下' },
+    mine:      { cat: 'trick', name: '地雷', emoji: '💣', price: 40, target: 'cell', desc: '在周围 8 格内埋地雷，踩中的人住院 3 天' },
+    frame:     { cat: 'trick', name: '陷害卡', emoji: '👮', price: 50, target: 'player', desc: '诬告目标，让其入狱 2 天' },
+    sleep:     { cat: 'trick', name: '冬眠卡', emoji: '💤', price: 80, target: 'none', desc: '其他所有玩家冬眠 1 回合' },
+    tax:       { cat: 'trick', name: '查税卡', emoji: '🧾', price: 40, target: 'player', desc: '目标被查税，缴纳现金的 30%' },
+    rob:       { cat: 'trick', name: '抢夺卡', emoji: '🦹', price: 40, target: 'player', desc: '随机抢走目标一张道具卡' },
+    buyland:   { cat: 'land', name: '购地卡', emoji: '💵', price: 60, target: 'none', desc: '按总价强行买下脚下的对手地产' },
+    monster:   { cat: 'land', name: '怪兽卡', emoji: '🦖', price: 60, target: 'cell', desc: '怪兽出没！一块地产的建筑全部被毁' },
+    angelcard: { cat: 'land', name: '天使卡', emoji: '😇', price: 60, target: 'cell', desc: '一整个片区的已有主地产各升一级' },
+    devilcard: { cat: 'land', name: '恶魔卡', emoji: '👿', price: 80, target: 'cell', desc: '一整个片区的建筑全部摧毁' },
+    average:   { cat: 'wealth', name: '均富卡', emoji: '⚖️', price: 80, target: 'none', desc: '所有玩家的现金重新平分' },
+    free:      { cat: 'wealth', name: '免费卡', emoji: '🎫', price: 30, target: 'passive', desc: '被动生效：自动免付一次过路费' },
+    blame:     { cat: 'wealth', name: '嫁祸卡', emoji: '🎭', price: 30, target: 'player', desc: '把你身上的神仙（好坏都行）转嫁给目标' },
   };
   const CARD_KEYS = Object.keys(CARDS);
 
@@ -197,7 +199,7 @@
     }
     s.players.forEach((p, i) => {
       p.color = PLAYER_COLORS[i];
-      p.cards = [pick(s, ['remote', 'roadblock', 'turn', 'robot']), pick(s, ['free', 'tax', 'stay', 'turtle'])];
+      p.cards = [pick(s, ['remote', 'roadblock', 'stay', 'mine']), pick(s, ['free', 'tax', 'turtle', 'rob'])];
     });
     LANDS.forEach(i => { s.lands[i] = { owner: null, level: 0 }; });
     spawnGod(s);
@@ -675,25 +677,21 @@
         for (let c = 0; c < N; c++) if (c !== p.pos && DIST[p.pos][c] <= 8 && !s.obstacles[c]) t.push(c);
         return t;
       }
-      case 'robot': return [];
       case 'stay': return [];
       case 'free': return null;
       case 'average': return [];
       case 'sleep': return others.length ? [] : null;
-      case 'dismiss': return p.god ? [] : null;
       case 'buyland': {
         const ld = s.lands[p.pos];
         return ld && ld.owner !== null && ld.owner !== i && p.cash >= landValue(s, p.pos) ? [] : null;
       }
-      case 'turn': case 'turtle': t = alive(s).map(j => s.players[j].id); break;
+      case 'turtle': t = alive(s).map(j => s.players[j].id); break;
       case 'tax': case 'frame': t = others.map(j => s.players[j].id); break;
       case 'rob': t = others.filter(j => s.players[j].cards.length).map(j => s.players[j].id); break;
       case 'blame': if (!p.god) return null; t = others.map(j => s.players[j].id); break;
-      case 'demolish': t = lands(c => s.lands[c].owner !== null && s.lands[c].owner !== i && s.lands[c].level > 0); break;
       case 'monster': t = lands(c => s.lands[c].level > 0); break;
       case 'angelcard': t = lands(c => GROUP_CELLS[BOARD[c].group].some(x => s.lands[x].owner !== null && s.lands[x].level < MAX_LEVEL)); break;
       case 'devilcard': t = lands(c => GROUP_CELLS[BOARD[c].group].some(x => s.lands[x].level > 0)); break;
-      case 'missile': t = Array.from({ length: N }, (_, c) => c); break;
     }
     return t && t.length ? t : null;
   }
@@ -710,13 +708,6 @@
       case 'remote': s.forcedDice = target; say(`本回合将掷出 ${target} 点`); break;
       case 'roadblock': s.obstacles[target] = 'block'; say(`在「${BOARD[target].name}」放了路障`); break;
       case 'mine': s.obstacles[target] = 'mine'; log(s, `💣 ${p.name} 偷偷埋下了地雷`); fx(s, '💣', '地雷', `${p.name} 偷偷埋了一颗地雷……`, 'info', i); break;
-      case 'robot': {
-        let n = 0;
-        for (const c of Object.keys(s.obstacles).map(Number)) if (DIST[p.pos][c] <= 10) { delete s.obstacles[c]; n++; }
-        say(n ? `清除了 ${n} 个障碍` : '前方一片坦途');
-        break;
-      }
-      case 'turn': reverse(s, tj); say(`${tp.name} 掉头了`); break;
       case 'turtle': tp.turtle = 3; say(`${tp.name} 变成了乌龟`, 'bad'); break;
       case 'average': {
         const al = alive(s), avg = round10(al.reduce((a, j) => a + s.players[j].cash, 0) / al.length);
@@ -737,7 +728,6 @@
         say(`花 ${money(v)} 强行买下了 ${pn(s, owner)} 的 ${BOARD[p.pos].name}`);
         break;
       }
-      case 'demolish': s.lands[target].level--; say(`拆掉了 ${BOARD[target].name} 的一层楼`); break;
       case 'monster': s.lands[target].level = 0; say(`怪兽踏平了 ${BOARD[target].name}`, 'bad'); break;
       case 'angelcard': {
         const g = BOARD[target].group;
@@ -751,20 +741,11 @@
         say(`${GROUPS[g].name}片区的建筑全部化为乌有`, 'bad');
         break;
       }
-      case 'missile': {
-        say(`导弹落在「${BOARD[target].name}」`, 'bad');
-        if (s.lands[target]) s.lands[target].level = 0;
-        delete s.obstacles[target];
-        delete s.gods[target];
-        alive(s).forEach(j => { if (s.players[j].pos === target && s.players[j].stay === 0) sendTo(s, j, 'hospital', 2, '被导弹炸伤'); });
-        break;
-      }
       case 'frame': say(`诬告了 ${tp.name}`); sendTo(s, tj, 'jail', 2, '被人陷害'); break;
       case 'sleep':
         alive(s).filter(j => j !== i).forEach(j => { const q = s.players[j]; q.stay += 1; if (!q.stayAt) q.stayAt = 'sleep'; });
         say('其他玩家都睡着了');
         break;
-      case 'dismiss': say(`送走了${GODS[p.god.key].name}`); p.god = null; break;
       case 'blame': {
         const g = p.god; p.god = null; tp.god = g;
         say(`把${GODS[g.key].name}转嫁给了 ${tp.name}`);
@@ -1009,7 +990,7 @@
   return {
     PACE, fxKind, paceMs, paceMark, WHEEL_FACES: WHEEL.map(w => ({ emoji: w.emoji, text: w.text, tone: w.tone })),
     BOARD, N, GROUPS, GROUP_CELLS, LANDS, LEVELS, LEVEL_EMOJI, LEVEL_MULT, MAX_LEVEL, MAX_CARDS, JAIL, HOSPITAL,
-    CHARACTERS, CHAR_KEYS, GODS, CARDS, CARD_KEYS, PLAYER_COLORS,
+    CHARACTERS, CHAR_KEYS, GODS, CARDS, CARD_KEYS, CARD_CATS, PLAYER_COLORS,
     createGame, applyAction, pendingActor, cardTargets,
     rentFor, netWorth, ownedBy, landValue, upgradeCost, buyPrice, cardPrice, money, dist, forwardOptions, landings,
     MAP_W, MAP_H, ADJ, START,

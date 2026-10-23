@@ -48,13 +48,6 @@
   }
 
   const bestLanding = (s, i, pos, prev, steps, first) => Math.max(...E.landings(s, i, pos, prev, steps, first).map(c => cellScore(s, i, c)));
-  // 掷两颗骰子时，按概率加权的落点好坏
-  function expectedRoll(s, i, pos, prev) {
-    let v = 0;
-    for (let t = 2; t <= 12; t++) v += bestLanding(s, i, pos, prev, t) * (6 - Math.abs(t - 7)) / 36;
-    return v;
-  }
-
   function leader(s, i) {
     return others(s, i).sort((a, b) => E.netWorth(s, b) - E.netWorth(s, a))[0];
   }
@@ -73,13 +66,12 @@
       if (!targets) return;
       const add = (score, target) => opts.push({ score, action: { type: 'useCard', index, target } });
       switch (key) {
-        case 'dismiss': if (!E.GODS[p.god.key].good) add(90); break;
         case 'blame': if (!E.GODS[p.god.key].good) add(95, leadId); break;
         case 'buyland': if (p.cash - E.landValue(s, p.pos) > reserve(s, i)) add(85); break;
-        case 'monster': case 'demolish': {
+        case 'monster': {
           const best = targets.filter(c => s.lands[c].owner !== i && s.lands[c].owner !== null)
             .sort((a, b) => E.rentFor(s, b) - E.rentFor(s, a))[0];
-          if (best !== undefined && s.lands[best].level >= (key === 'monster' ? 3 : 2)) add(70, best);
+          if (best !== undefined && s.lands[best].level >= 3) add(70, best);
           break;
         }
         case 'devilcard': {
@@ -113,10 +105,6 @@
         case 'sleep': if (behind && rnd(s, 1) < 0.4) add(45); break;
         case 'turtle': if (behind && rnd(s, 2) < 0.5) add(40, leadId); break;
         case 'rob': if (s.players[lead].cards.length && p.cards.length < E.MAX_CARDS) add(40, targets.includes(leadId) ? leadId : targets[0]); break;
-        case 'robot': {
-          if (Object.keys(s.obstacles).some(c => E.dist(p.pos, Number(c)) <= 10)) add(60);
-          break;
-        }
         case 'mine': case 'roadblock': {
           // 放在领先对手前方、且自己暂时不会经过的地方
           const lp = s.players[lead];
@@ -141,19 +129,7 @@
           if (bestScore - avg > 900) add(60, best);
           break;
         }
-        case 'turn': {
-          // 掉头后的预期落点明显更好，就给自己用
-          if (p.prev === null) break;
-          const back = E.ADJ[p.pos].find(n => n !== p.prev);
-          if (back !== undefined && expectedRoll(s, i, p.pos, back) - expectedRoll(s, i, p.pos, p.prev) > 1200) add(50, p.id);
-          break;
-        }
         case 'stay': if (cellScore(s, i, p.pos) >= 800 && BOARD[p.pos].type === 'land') add(30); break;
-        case 'missile': {
-          const tgt = targets.find(c => BOARD[c].type === 'land' && s.lands[c].owner !== null && s.lands[c].owner !== i && s.lands[c].level >= 4);
-          if (tgt !== undefined) add(70, tgt);
-          break;
-        }
       }
     });
     opts.sort((a, b) => b.score - a.score);
@@ -164,7 +140,7 @@
     return GROUP_CELLS[BOARD[cell].group].every(c => c === cell || s.lands[c].owner === i);
   }
 
-  const SHOP_PREF = ['remote', 'free', 'monster', 'tax', 'mine', 'angelcard', 'buyland', 'robot', 'average', 'frame', 'turtle', 'dismiss', 'roadblock', 'missile'];
+  const SHOP_PREF = ['remote', 'free', 'monster', 'tax', 'mine', 'angelcard', 'buyland', 'average', 'frame', 'blame', 'turtle', 'stay', 'rob', 'roadblock'];
 
   function decide(s, playerId) {
     const i = s.players.findIndex(p => p.id === playerId);
