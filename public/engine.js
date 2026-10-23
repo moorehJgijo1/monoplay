@@ -643,17 +643,17 @@
   }
 
   const WHEEL = [
-    { w: 3, emoji: '💎', text: '头奖！获得 ¥5000', run: (s, i) => { s.players[i].cash += 5000; }, tone: 'good' },
-    { w: 8, emoji: '💰', text: '获得 ¥2000', run: (s, i) => { s.players[i].cash += 2000; }, tone: 'good' },
-    { w: 10, emoji: '🪙', text: '获得 ¥800', run: (s, i) => { s.players[i].cash += 800; }, tone: 'good' },
-    { w: 8, emoji: '🎟️', text: '获得 60 点券', run: (s, i) => { s.players[i].points += 60; }, tone: 'good' },
-    { w: 8, emoji: '🃏', text: '获得 2 张道具卡', run: (s, i) => { giveCard(s, i, randomCard(s)); giveCard(s, i, randomCard(s)); }, tone: 'good' },
-    { w: 4, emoji: '💰', text: '财神附身', run: (s, i) => attachGod(s, i, 'caishen', '转出了'), tone: 'good' },
-    { w: 4, emoji: '🧓', text: '土地公附身', run: (s, i) => attachGod(s, i, 'tudi', '转出了'), tone: 'good' },
-    { w: 8, emoji: '🫥', text: '谢谢参与', run: () => {}, tone: 'info' },
-    { w: 7, emoji: '🧨', text: '损失 ¥1500', run: (s, i) => pay(s, i, null, 1500, '转盘'), tone: 'bad' },
-    { w: 4, emoji: '😩', text: '衰神附身', run: (s, i) => attachGod(s, i, 'shuai', '转出了'), tone: 'bad' },
-    { w: 3, emoji: '🚑', text: '转盘飞出来砸到头，住院 1 天', run: (s, i) => sendTo(s, i, 'hospital', 1, '被转盘砸到'), tone: 'bad' },
+    { w: 3, short: '¥5000', emoji: '💎', text: '头奖！获得 ¥5000', run: (s, i) => { s.players[i].cash += 5000; }, tone: 'good' },
+    { w: 8, short: '¥2000', emoji: '💰', text: '获得 ¥2000', run: (s, i) => { s.players[i].cash += 2000; }, tone: 'good' },
+    { w: 10, short: '¥800', emoji: '🪙', text: '获得 ¥800', run: (s, i) => { s.players[i].cash += 800; }, tone: 'good' },
+    { w: 8, short: '60点券', emoji: '🎟️', text: '获得 60 点券', run: (s, i) => { s.players[i].points += 60; }, tone: 'good' },
+    { w: 8, short: '2张卡', emoji: '🃏', text: '获得 2 张道具卡', run: (s, i) => { giveCard(s, i, randomCard(s)); giveCard(s, i, randomCard(s)); }, tone: 'good' },
+    { w: 4, short: '财神', emoji: '🤑', text: '财神附身', run: (s, i) => attachGod(s, i, 'caishen', '转出了'), tone: 'good' },
+    { w: 4, short: '土地公', emoji: '🧓', text: '土地公附身', run: (s, i) => attachGod(s, i, 'tudi', '转出了'), tone: 'good' },
+    { w: 8, short: '谢谢参与', emoji: '🫥', text: '谢谢参与', run: () => {}, tone: 'info' },
+    { w: 7, short: '-¥1500', emoji: '🧨', text: '损失 ¥1500', run: (s, i) => pay(s, i, null, 1500, '转盘'), tone: 'bad' },
+    { w: 4, short: '衰神', emoji: '😩', text: '衰神附身', run: (s, i) => attachGod(s, i, 'shuai', '转出了'), tone: 'bad' },
+    { w: 3, short: '住院', emoji: '🚑', text: '转盘飞出来砸到头，住院 1 天', run: (s, i) => sendTo(s, i, 'hospital', 1, '被转盘砸到'), tone: 'bad' },
   ];
   function wheel(s, i) {
     const r = pickWeighted(s, WHEEL);
@@ -975,7 +975,7 @@
     if (CARD_TITLES.has(f.title)) return 'item';
     return 'toast';
   }
-  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 3600, casino: 3000, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
+  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 6000, casino: 3000, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
   const paceMark = s => ({ seq: s.seq, dice: s.diceSeq || 0, turn: s.turn });
   // 估算从 mark 之后的新动画（走棋、骰子、事件、换人）需要播放多少毫秒
   function paceMs(s, mark) {
@@ -988,7 +988,7 @@
   }
 
   return {
-    PACE, fxKind, paceMs, paceMark, WHEEL_FACES: WHEEL.map(w => ({ emoji: w.emoji, text: w.text, tone: w.tone })),
+    PACE, fxKind, paceMs, paceMark, WHEEL_FACES: WHEEL.map(w => ({ w: w.w, short: w.short, emoji: w.emoji, text: w.text, tone: w.tone })),
     BOARD, N, GROUPS, GROUP_CELLS, LANDS, LEVELS, LEVEL_EMOJI, LEVEL_MULT, MAX_LEVEL, MAX_CARDS, JAIL, HOSPITAL,
     CHARACTERS, CHAR_KEYS, GODS, CARDS, CARD_KEYS, CARD_CATS, PLAYER_COLORS,
     createGame, applyAction, pendingActor, cardTargets,

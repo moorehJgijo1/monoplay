@@ -701,25 +701,7 @@ import { sfx, setSoundEnabled } from './sound.js';
       sfx.turn();
       await stageWait(total);
     } else if (kind === 'wheel') {
-      const faces = E.WHEEL_FACES, n = faces.length, seg = 360 / n;
-      const colors = ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#da77f2', '#ffa94d'];
-      const grad = faces.map((_, i) => `${colors[i % colors.length]} ${i * seg}deg ${(i + 1) * seg}deg`).join(',');
-      const spans = faces.map((x, i) => `<span style="transform: translate(-50%,-50%) rotate(${i * seg + seg / 2}deg) translateY(-17cqmin)">${x.emoji}</span>`).join('');
-      showStage(`<div><div class="wheel-wrap"><div class="wheel-pointer">🔻</div><div class="wheel" style="background:conic-gradient(${grad})">${spans}</div><div class="wheel-hub">🎡</div></div>
-        <div class="wheel-result">${esc(who)}：${esc(what)}</div></div>`);
-      const face = f.extra && f.extra.face >= 0 ? f.extra.face : 0;
-      const wheel = $('#stage .wheel');
-      wheel.style.transitionDuration = (2.6 * speedMul()) + 's';
-      await sleep(60);
-      wheel.style.transform = `rotate(${360 * 5 - (face * seg + seg / 2)}deg)`;
-      let alive = true;
-      (async () => { let gap = 45; while (alive && gap < 400) { sfx.tick(); await sleep(gap * speedMul()); gap *= 1.07; } })();
-      await stageWait(2700);
-      alive = false;
-      const res = $('#stage .wheel-result');
-      if (res) res.classList.add('show');
-      (sfx[f.tone] || sfx.info)();
-      await stageWait(total - 2700);
+      await playWheel(f, who, what, total);
     } else if (kind === 'casino') {
       const x = f.extra || {};
       const won = f.tone === 'good';
@@ -770,6 +752,150 @@ import { sfx, setSoundEnabled } from './sound.js';
       $('#viewBtn').textContent = '🗺️ 全景';
       await sleep(900 * speedMul());
     }
+  }
+
+  // ---------- 幸运转盘 ----------
+  // 每格按真实概率分大小；好奖用鲜艳颜色、坏结果用深色，并交错排列避免相邻撞色
+  const WHEEL_GOOD = ['#ff5a5f', '#ffb400', '#18b6a3', '#7b61ff', '#ff7eb6', '#2f80ed', '#f97316'];
+  function wheelLayout() {
+    const faces = E.WHEEL_FACES;
+    const good = faces.map((x, k) => k).filter(k => faces[k].tone !== 'bad' && faces[k].tone !== 'info');
+    const bad = faces.map((x, k) => k).filter(k => !good.includes(k));
+    const order = [];
+    const step = good.length / bad.length;
+    let gi = 0;
+    bad.forEach((b, n) => { while (gi < Math.round((n + 1) * step)) order.push(good[gi++]); order.push(b); });
+    while (gi < good.length) order.push(good[gi++]);
+    const total = faces.reduce((a, x) => a + x.w, 0);
+    let a = 0, gc = 0;
+    return order.map(k => {
+      const sweep = faces[k].w / total * 360, x = faces[k];
+      const color = x.tone === 'bad' ? (bad.indexOf(k) % 2 ? '#3d405b' : '#55597a') : x.tone === 'info' ? '#9aa1ab' : WHEEL_GOOD[gc++ % WHEEL_GOOD.length];
+      const seg = { k, from: a, to: a + sweep, color, ...x };
+      a += sweep;
+      return seg;
+    });
+  }
+  function drawWheel(canvas, segs) {
+    const g = canvas.getContext('2d'), S = canvas.width, c = S / 2, R = S / 2 - 4;
+    const rad = d => (d - 90) * Math.PI / 180;
+    segs.forEach(sg => {
+      g.beginPath(); g.moveTo(c, c); g.arc(c, c, R, rad(sg.from), rad(sg.to)); g.closePath();
+      const gr = g.createRadialGradient(c, c, R * 0.15, c, c, R);
+      gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.25, sg.color); gr.addColorStop(1, sg.color);
+      g.fillStyle = gr; g.fill();
+      g.lineWidth = 5; g.strokeStyle = '#fff6dc'; g.stroke();
+      const mid = (sg.from + sg.to) / 2, sweep = sg.to - sg.from;
+      g.save(); g.translate(c, c); g.rotate(mid * Math.PI / 180);
+      const em = Math.min(54, 14 + sweep * 1.4);
+      g.font = `${em}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(sg.emoji, 0, -R * 0.8);
+      // 文字沿半径方向排；左半边翻转 180°，保证都是正着读
+      g.rotate(-Math.PI / 2);
+      const flip = mid > 180;
+      if (flip) g.rotate(Math.PI);
+      g.font = `bold ${Math.min(30, 12 + sweep * 0.75)}px "PingFang SC","Microsoft YaHei",sans-serif`;
+      g.fillStyle = '#fff'; g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 4;
+      const tx = flip ? -R * 0.46 : R * 0.46;
+      g.strokeText(sg.short, tx, 0); g.fillText(sg.short, tx, 0);
+      g.restore();
+    });
+    g.beginPath(); g.arc(c, c, R, 0, Math.PI * 2); g.lineWidth = 6; g.strokeStyle = '#fff6dc'; g.stroke();
+  }
+  function confetti(box, n = 60) {
+    const colors = ['#ff5a5f', '#ffb400', '#18b6a3', '#7b61ff', '#ff7eb6', '#2f80ed'];
+    for (let k = 0; k < n; k++) {
+      const p = document.createElement('i');
+      p.className = 'confetti';
+      p.style.left = 50 + (Math.random() - 0.5) * 30 + '%';
+      p.style.background = colors[k % colors.length];
+      p.style.setProperty('--dx', (Math.random() - 0.5) * 90 + 'cqmin');
+      p.style.setProperty('--dy', 30 + Math.random() * 50 + 'cqmin');
+      p.style.setProperty('--r', Math.random() * 720 + 'deg');
+      p.style.animationDelay = Math.random() * 0.25 + 's';
+      box.appendChild(p);
+    }
+  }
+  async function playWheel(f, who, what) {
+    const segs = wheelLayout();
+    const face = f.extra && f.extra.face >= 0 ? f.extra.face : 0;
+    const win = segs.find(sg => sg.k === face) || segs[0];
+    const s = view.shown, p = f.player !== null && s ? s.players[f.player] : null;
+    const mine = p && p.id === ctrl.you() && !p.isBot && !p.auto;
+    const bulbs = Array.from({ length: 24 }, (_, k) => `<i style="--a:${k * 15}deg;--k:${k}"></i>`).join('');
+    showStage(`<div class="wheel2">
+      <div class="wh-title">🎡 幸运转盘<small>${esc(who || (p ? p.name : ''))}${mine ? '，点转盘中间开始转！' : ' 转动了转盘'}</small></div>
+      <div class="wh-box ${mine ? 'wait' : ''}">
+        <div class="wh-rim">${bulbs}</div>
+        <canvas class="wh-face" width="520" height="520"></canvas>
+        <div class="wh-pointer"></div>
+        <button class="wh-hub">${mine ? '点我<br>转！' : '🎡'}</button>
+      </div>
+      <div class="wh-result ${f.tone}"><span>${win.emoji}</span><div><b>${esc(win.short)}</b>${esc(what)}</div></div>
+      <div class="wh-fx"></div>
+    </div>`);
+    const st = $('#stage'), box = st.querySelector('.wh-box'), face2 = st.querySelector('.wh-face'), ptr = st.querySelector('.wh-pointer');
+    drawWheel(face2, segs);
+    // 自己转的话等玩家点一下（最多 3 秒）；这一段不能被“点击跳过”提前结束
+    const prevSkip = $('#stage').onclick;
+    if (mine) {
+      $('#stage').onclick = null;
+      await new Promise(res => {
+        const t = setTimeout(res, 3000);
+        st.querySelector('.wh-hub').onclick = e => { e.stopPropagation(); clearTimeout(t); res(); };
+      });
+      $('#stage').onclick = prevSkip;
+    } else await sleep(350 * speedMul());
+    box.classList.remove('wait');
+    box.classList.add('spin');
+    st.querySelector('.wh-title small').textContent = `${who || (p ? p.name : '')} 转动了转盘`;
+    st.querySelector('.wh-hub').innerHTML = '🎡';
+    sfx.whoosh();
+    // 落点：目标格内随机位置，转 5 圈多，最后冲过一点再回弹
+    const sweep = win.to - win.from;
+    const landAt = win.from + sweep * (0.25 + Math.random() * 0.5);
+    const R = 360 * 5 + (360 - landAt);
+    const over = Math.min(4, (win.to - landAt) * 0.8);
+    const D = 3400 * speedMul();
+    const bounds = segs.map(sg => sg.from);
+    let lastA = 0, t0 = performance.now(), skipped = false;
+    view.skipStage = () => { skipped = true; };
+    await new Promise(res => {
+      const step = now => {
+        let t = Math.min(1, (now - t0) / D);
+        if (skipped) t = 1;
+        const e = t < 0.85 ? (1 - Math.pow(1 - t / 0.85, 4)) * (R + over) : (R + over) - over * (1 - Math.pow(1 - (t - 0.85) / 0.15, 2));
+        face2.style.transform = `rotate(${e}deg)`;
+        // 指针读到的角度 = 转盘上的哪一格正在顶端；划过分隔线就“咔”一下、拨动指针
+        if (passBoundary(lastA, e, bounds)) {
+          sfx.tick();
+          ptr.classList.remove('flick'); void ptr.offsetWidth; ptr.classList.add('flick');
+        }
+        lastA = e;
+        if (t < 1) requestAnimationFrame(step); else res();
+      };
+      requestAnimationFrame(step);
+    });
+    view.skipStage = null;
+    box.classList.remove('spin');
+    box.classList.add('done', f.tone);
+    st.querySelector('.wh-result').classList.add('show');
+    if (f.tone === 'good') { confetti(st.querySelector('.wh-fx')); sfx.good(); }
+    else if (f.tone === 'bad') { box.classList.add('shake'); sfx.bad(); }
+    else sfx.info();
+    await stageWait(1900);
+  }
+  // 转盘从角度 a 转到 b 时是否有分隔线经过指针（指针在顶端 = 转盘上 (360 - 角度) 的位置）
+  function passBoundary(a, b, bounds) {
+    const at = x => ((360 - x) % 360 + 360) % 360;
+    return bounds.some(d => {
+      // 转过的弧（逆着转盘方向）是从 at(a) 递减到 at(b)
+      const span = b - a;
+      if (span >= 360) return true;
+      const rel = ((at(a) - d) % 360 + 360) % 360;
+      return span > 0 ? rel < span && rel > 0 : false;
+    });
   }
 
   async function turnBanner(s) {
