@@ -5,7 +5,7 @@ import { sfx, setSoundEnabled } from './sound.js';
 (() => {
   'use strict';
   const E = window.MonopolyEngine, AI = window.MonopolyAI;
-  const { BOARD, N, GROUPS, CHARACTERS, CHAR_KEYS, CARDS, CARD_KEYS, GODS, LEVELS, LEVEL_EMOJI, money } = E;
+  const { BOARD, N, GROUPS, CHARACTERS, CHAR_KEYS, CARDS, CARD_KEYS, GODS, LEVELS, LEVEL_EMOJI, STOCKS, STOCK_KEYS, money } = E;
 
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
@@ -17,7 +17,7 @@ import { sfx, setSoundEnabled } from './sound.js';
     del(k) { try { localStorage.removeItem(k); } catch { /* 忽略 */ } },
   };
   const BOT_NAMES = ['电脑·小强', '电脑·阿财', '电脑·旺旺', '电脑·多多', '电脑·招财'];
-  const CELL_ICONS = { park: '🌳', start: '🏁', destiny: '🔮', chance: '❓', shop: '🏪', jail: '🚔', wheel: '🎡', points: '🎟️', news: '📰', hospital: '🏥', casino: '🎰', police: '👮', tax: '🧾' };
+  const CELL_ICONS = { park: '🌳', start: '🏁', destiny: '🔮', chance: '❓', shop: '🏪', jail: '🚔', wheel: '🎡', points: '🎟️', news: '📰', hospital: '🏥', casino: '🎰', police: '👮', tax: '🧾', exchange: '🏦' };
   const CELL_DESC = {
     start: '经过或停在起点领取工资 ¥2000 和 10 点券（金贝贝 ¥3000）。',
     destiny: '抽一张命运卡：多半和钱有关，有好有坏。',
@@ -32,8 +32,9 @@ import { sfx, setSoundEnabled } from './sound.js';
     police: '停在这里会被警察带走，入狱 2 天。',
     tax: '缴纳现金 10% 的所得税。',
     park: '在公园散步，获得 20 点券。这里也是全城最大的十字路口。',
+    exchange: '证券交易所：免手续费买卖股票，还能打听到一支股票的内幕消息。',
   };
-  const PHASE_TEXT = { fork: '选择岔路', roll: '准备掷骰子', buy: '考虑买地', upgrade: '考虑盖楼', shop: '在道具店购物', casino: '在赌场', moving: '移动中', done: '' };
+  const PHASE_TEXT = { fork: '选择岔路', roll: '准备掷骰子', buy: '考虑买地', upgrade: '考虑盖楼', shop: '在道具店购物', casino: '在赌场', exchange: '在证券交易所', moving: '移动中', done: '' };
 
   // ---------- 音效（见 sound.js） ----------
   let soundOn = store.get('mono.sound', true);
@@ -55,7 +56,7 @@ import { sfx, setSoundEnabled } from './sound.js';
   let modalKind = null;
   function openModal(kind, html) {
     modalKind = kind;
-    $('#modal').classList.toggle('wide', kind === 'shop');
+    $('#modal').classList.toggle('wide', kind === 'shop' || kind === 'market');
     $('#modal').classList.toggle('casino-modal', kind === 'casino');
     $('#modalBody').innerHTML = html;
     $('#modal').classList.remove('hidden');
@@ -67,7 +68,7 @@ import { sfx, setSoundEnabled } from './sound.js';
     $('#modalBody').innerHTML = '';
   }
   $('#modalClose').onclick = () => {
-    if (modalKind === 'shop' || modalKind === 'casino') dismissedVisit = visitKey();
+    if (modalKind === 'shop' || modalKind === 'casino' || modalKind === 'market') dismissedVisit = visitKey();
     closeModal();
   };
   $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') $('#modalClose').click(); });
@@ -705,6 +706,8 @@ import { sfx, setSoundEnabled } from './sound.js';
       await playWheel(f, who, what, total);
     } else if (kind === 'casino') {
       await playCasino(f, who);
+    } else if (kind === 'market') {
+      await playMarket(f, total);
     } else {
       // god / item / big
       const glow = f.tone === 'good' ? '#8dffb1' : f.tone === 'bad' ? '#ff6b6b' : '#ffe066';
@@ -994,6 +997,7 @@ import { sfx, setSoundEnabled } from './sound.js';
     $('#nowName').textContent = s.phase === 'over' ? `🏆 ${hero.name} 获胜！` : `${hero.name} 的回合`;
     $('#nowSub').innerHTML = `现金 <b>${money(hero.cash)}</b><br>📍 ${BOARD[hero.pos].name}${statusText(hero) ? ' · ' + statusText(hero) : ''}`;
     if (!view.animating || !$('#dice .rolling')) $('#dice').innerHTML = (view.dice || [6, 6]).map(v => dieHTML(v)).join('');
+    renderMiniMarket(s);
     $('#centerLog').innerHTML = s.log.slice(-4).map(l => `<div>${esc(l.text)}</div>`).join('');
   }
 
@@ -1005,12 +1009,13 @@ import { sfx, setSoundEnabled } from './sound.js';
     return parts.join(' ');
   }
   // 状态做成彩色小标签：好事绿、坏事红
-  function statusChips(p) {
+  function statusChips(p, s) {
     const c = [];
     if (p.stay > 0) c.push(['bad', p.stayAt === 'jail' ? `🚔 坐牢 ${p.stay} 天` : p.stayAt === 'hospital' ? `🏥 住院 ${p.stay} 天` : `💤 冬眠 ${p.stay} 回合`]);
     if (p.god) { const g = GODS[p.god.key]; c.push([g.good ? 'good' : 'bad', `${g.emoji} ${g.name} ${p.god.turns} 回合`]); }
     if (p.turtle) c.push(['bad', `🐢 乌龟 ${p.turtle} 次`]);
     if (p.cards.includes('free')) c.push(['good', '🎫 免费卡']);
+    if (s.market) STOCK_KEYS.forEach(k => { if (E.chairman(s, k) === s.players.indexOf(p)) c.push(['gold', `${STOCKS[k].emoji} ${STOCKS[k].name}董事长`]); });
     return c.map(([t, x]) => `<span class="chip ${t}">${x}</span>`).join('');
   }
   function renderPlayers(s) {
@@ -1037,11 +1042,12 @@ import { sfx, setSoundEnabled } from './sound.js';
         <div class="stats">
           <span><i>总资产</i><b>${shortMoney(worth[k])}</b></span>
           <span><i>地产</i><b>${E.ownedBy(s, k).length}</b></span>
+          <span><i>股票</i><b>${shortMoney(E.stockValue(s, k))}</b></span>
           <span><i>道具卡</i><b>${p.cards.length}</b></span>
           <span><i>点券</i><b>${p.points}</b></span>
         </div>
         <div class="bar"><i style="width:${Math.round(worth[k] / top * 100)}%"></i></div>
-        ${statusChips(p) ? `<div class="pl-bottom">${statusChips(p)}</div>` : ''}
+        ${statusChips(p, s) ? `<div class="pl-bottom">${statusChips(p, s)}</div>` : ''}
       </div>`;
     }).join('');
     s.players.forEach((p, k) => { if (!p.bankrupt && view.cash[k] !== p.cash) countCash(k, p.cash); });
@@ -1119,7 +1125,8 @@ import { sfx, setSoundEnabled } from './sound.js';
         if (p.turtle) notes.push(`🐢 只能走 1 步（剩 ${p.turtle} 次）`);
         el.className = 'action-panel roll-mode';
         el.innerHTML = `${notes.length ? `<div class="roll-notes">${notes.map(n => `<span>${n}</span>`).join('')}</div>` : ''}
-          <button class="roll-btn" data-act="roll"><span class="die-ic">🎲</span><b>掷骰子</b></button>`;
+          <div class="roll-row"><button class="mk-btn" data-act="openMarket"><span>📈</span><b>股市</b></button>
+          <button class="roll-btn" data-act="roll"><span class="die-ic">🎲</span><b>掷骰子</b></button></div>`;
         return;
       }
       case 'buy': {
@@ -1155,6 +1162,12 @@ import { sfx, setSoundEnabled } from './sound.js';
         html = `<h3>🏪 道具店</h3><p>你有 ${p.points} 点券。</p>
           <div class="row"><button class="btn primary big" data-act="openShop">进去逛逛</button><button class="btn big" data-act="skip">离开</button></div>`;
         break;
+      case 'exchange': {
+        const tip = Object.keys(p.tips || {})[0];
+        html = `<h3>🏦 证券交易所</h3><p>在这里买卖股票<b>免手续费</b>${tip ? `，还打听到了${STOCKS[tip].emoji}${STOCKS[tip].name}的内幕：<b class="${upCls(p.tips[tip])}">${p.tips[tip] >= 0 ? '看涨' : '看跌'} 约 ${pctText(p.tips[tip])}</b>` : ''}</p>
+          <div class="row"><button class="btn primary big" data-act="openMarket">进去交易</button><button class="btn big" data-act="skip">离开</button></div>`;
+        break;
+      }
       case 'casino':
         html = `<h3>🎰 赌场</h3><p>押大小，赢了翻倍！你的现金 ${money(p.cash)}</p>
           <div class="row"><button class="btn primary big" data-act="openCasino">下注</button><button class="btn big" data-act="skip">离开</button></div>`;
@@ -1206,6 +1219,7 @@ import { sfx, setSoundEnabled } from './sound.js';
     if (act === 'ranking') return showRanking();
     if (act === 'openShop') return openShop();
     if (act === 'openCasino') return openCasino();
+    if (act === 'openMarket') return openMarket();
     if (act === 'upgrade') return send({ type: 'upgrade', levels: Number(b.dataset.levels) });
     if (act === 'fork') return send({ type: 'chooseFork', to: Number(b.dataset.to) });
     send({ type: act });
@@ -1250,6 +1264,7 @@ import { sfx, setSoundEnabled } from './sound.js';
       }
       case 'buyland': { const ld = s.lands[p.pos]; return ld && ld.owner !== null && ld.owner !== me ? `花 <b>${money(E.landValue(s, p.pos))}</b> 买下 ${esc(s.players[ld.owner].name)} 的「${BOARD[p.pos].name}」` : '要站在对手的地产上才能用'; }
       case 'stay': return `原地不动，再次触发「${BOARD[p.pos].name}」`;
+      case 'insider': return '得知全部 6 支股票下回合收盘的大致涨跌，只有你能看到';
       case 'sleep': return `其他 <b>${s.players.filter((x, k) => k !== me && !x.bankrupt).length}</b> 位玩家冬眠 1 回合`;
       default: return '';
     }
@@ -1293,6 +1308,13 @@ import { sfx, setSoundEnabled } from './sound.js';
         const ends = E.landings(s, me, p.pos, p.prev, t);
         return `<button class="dopt" data-t="${t}" data-ends="${ends.join(',')}"><b>${t}</b>${briefHTML(s, me, ends)}</button>`;
       }).join('')}</div><p class="hint">鼠标移到点数上，地图会标出会停下的格子。</p>`;
+    } else if (c.target === 'stock') {
+      body = `<div class="use-title">选择一支股票</div><div class="tgt-grid stocks">${targets.map(k => {
+        const st = STOCKS[k], m = s.market[k], to = m.price * (key === 'bull' ? 1.1 : 0.9), mine = p.stocks[k] || 0;
+        return `<button class="tgt stock" data-t="${k}"><span class="av">${st.emoji}</span><b>${st.name}</b>
+          <small>¥${m.price.toFixed(1)} → <b class="${key === 'bull' ? 'up' : 'down'}">¥${to.toFixed(1)}</b></small>
+          <span class="pv">${mine ? `你持有 ${mine} 股<br><b class="${key === 'bull' ? 'up' : 'down'}">${key === 'bull' ? '+' : '−'}${money(Math.abs(mine * (to - m.price)))}</b>` : '你没有持股'}</span></button>`;
+      }).join('')}</div>`;
     } else if (c.target === 'cell') {
       body = `<div class="use-title">${CELL_HINT[key] || '选择一个格子'}</div><p class="hint">可选的格子会在地图上闪烁。</p><button class="cta" data-pickcell>🗺️ 去地图上选</button>`;
     } else {
@@ -1362,6 +1384,172 @@ import { sfx, setSoundEnabled } from './sound.js';
       <table class="info-table"><tr><td><b>建筑</b></td><td><b>基础过路费</b></td></tr>${rows}</table>
       <p class="hint">同片区每多拥有一块地，过路费 +60%；钱夫人收租再 +25%。</p>
       ${extra.map(x => `<p>${x}</p>`).join('')}`);
+  }
+
+  // ---------- 股市 ----------
+  // 按国内股市的习惯：红涨绿跌
+  const pctText = v => (v > 0.0005 ? '+' : v < -0.0005 ? '−' : '') + Math.abs(v * 100).toFixed(1) + '%';
+  const upCls = v => (v > 0.0005 ? 'up' : v < -0.0005 ? 'down' : 'flat');
+  const stockChg = m => (m.hist.length > 1 ? m.price / m.hist[m.hist.length - 2] - 1 : 0);
+  const priceText = v => '¥' + v.toFixed(1);
+  // 迷你走势线
+  function sparkSVG(hist, w = 84, h = 26) {
+    const pts = hist.slice(-12);
+    if (pts.length < 2) return `<svg class="spark" viewBox="0 0 ${w} ${h}"></svg>`;
+    const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1;
+    const xy = pts.map((v, k) => `${(k / (pts.length - 1) * (w - 4) + 2).toFixed(1)},${(h - 3 - (v - lo) / span * (h - 6)).toFixed(1)}`);
+    const cls = upCls(pts[pts.length - 1] / pts[0] - 1);
+    return `<svg class="spark ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${xy.join(' ')}"/></svg>`;
+  }
+  // K 线：每回合一根，开盘价是上回合收盘价；虚线是基准价
+  function candleSVG(hist, base) {
+    const w = 360, h = 150, pad = 8;
+    const vals = [...hist, base];
+    const lo = Math.min(...vals) * 0.97, hi = Math.max(...vals) * 1.03;
+    const y = v => (h - pad - (v - lo) / (hi - lo) * (h - pad * 2)).toFixed(1);
+    const n = Math.max(1, hist.length - 1), slot = (w - 40) / Math.max(n, 8);
+    let bars = '';
+    for (let k = 1; k < hist.length; k++) {
+      const o = hist[k - 1], c = hist[k], cls = c >= o ? 'up' : 'down';
+      const x = 6 + (k - 1) * slot, top = y(Math.max(o, c)), bot = y(Math.min(o, c));
+      const hh = Math.max(2, bot - top);
+      const wick = Math.abs(c - o) * 0.35 + (hi - lo) * 0.01;
+      bars += `<line class="${cls}" x1="${x + slot * 0.35}" x2="${x + slot * 0.35}" y1="${y(Math.max(o, c) + wick)}" y2="${y(Math.min(o, c) - wick)}"/>`;
+      bars += `<rect class="${cls}" x="${x}" y="${top}" width="${(slot * 0.7).toFixed(1)}" height="${hh.toFixed(1)}" rx="1.5"/>`;
+    }
+    const last = hist[hist.length - 1];
+    return `<svg class="kline" viewBox="0 0 ${w} ${h}">
+      <line class="base" x1="0" x2="${w}" y1="${y(base)}" y2="${y(base)}"/><text class="base-t" x="${w - 4}" y="${y(base) - 4}">基准 ${priceText(base)}</text>
+      ${bars}
+      <text class="last-t" x="${w - 4}" y="${Math.min(h - 4, Number(y(last)) + 14)}">${priceText(last)}</text>
+      ${hist.length < 2 ? `<text class="empty-t" x="${w / 2}" y="${h / 2}">第一回合结束后开始有 K 线</text>` : ''}</svg>`;
+  }
+  const canTrade = s => canAct(s) && (s.phase === 'roll' || s.phase === 'exchange');
+  // 买 lots 手要花多少（含手续费），和引擎的算法一致
+  function tradeCost(m, lots, free) {
+    const gross = Math.round(Math.abs(lots) * E.LOT * m.price);
+    const fee = free ? 0 : Math.max(1, Math.round(gross * E.STOCK_FEE));
+    return lots > 0 ? gross + fee : gross - fee;
+  }
+
+  let mktSel = null;
+  function openMarket() {
+    const s = ctrl && ctrl.state;
+    if (!s || !s.market) return;
+    const me = viewer(s), p = me >= 0 ? s.players[me] : null;
+    const trade = p && !p.bankrupt && canTrade(s), free = s.phase === 'exchange';
+    if (!STOCKS[mktSel]) mktSel = STOCK_KEYS[0];
+    const chairOf = k => { const c = E.chairman(s, k); return c === null ? null : s.players[c]; };
+    const tips = (p && p.tips) || {};
+    const rows = STOCK_KEYS.map(k => {
+      const st = STOCKS[k], m = s.market[k], chg = stockChg(m), mine = (p && p.stocks[k]) || 0, ch = chairOf(k);
+      return `<button class="mk-row ${k === mktSel ? 'on' : ''}" data-stock="${k}">
+        <span class="mk-em">${st.emoji}</span>
+        <span class="mk-name"><b>${st.name}</b><small>${st.groups.map(g => GROUPS[g].name).join(' · ')}</small></span>
+        ${sparkSVG(m.hist)}
+        <span class="mk-price"><b>${priceText(m.price)}</b><small class="${upCls(chg)}">${pctText(chg)}</small></span>
+        <span class="mk-tags">${mine ? `<i class="own">持 ${mine}</i>` : ''}${ch ? `<i class="chair" style="--pc:${ch.color}" title="董事长 ${esc(ch.name)}">👑${CHARACTERS[ch.char].emoji}</i>` : ''}${tips[k] !== undefined ? `<i class="tip ${upCls(tips[k])}">🕵️${tips[k] >= 0 ? '涨' : '跌'}</i>` : ''}</span>
+      </button>`;
+    }).join('');
+    const k = mktSel, st = STOCKS[k], m = s.market[k], chg = stockChg(m), ch = chairOf(k);
+    const mine = (p && p.stocks[k]) || 0;
+    const sold = st.groups.map(g => { const cells = E.GROUP_CELLS[g]; return `${GROUPS[g].name} ${cells.filter(c => s.lands[c].owner !== null).length}/${cells.length}`; }).join('，');
+    const pr = m.pressure;
+    const lines = [
+      `<div><i>关联片区</i><span>${sold} 块已售</span></div>`,
+      `<div><i>地图动向</i><span class="${upCls(pr)}">${Math.abs(pr) < 0.005 ? '平静' : pr > 0 ? `🏗️ 片区在建设，利好 ${pctText(pr)}` : `💥 片区受损，利空 ${pctText(pr)}`}</span></div>`,
+      `<div><i>董事长</i><span>${ch ? `<b style="color:${ch.color}">👑 ${esc(ch.name)}</b>（${ch.stocks[k]} 股）` : `暂无（最大股东且 ≥${E.CHAIR_MIN} 股即可当选）`}</span></div>`,
+      tips[k] !== undefined ? `<div class="tipline"><i>🕵️ 内幕</i><span class="${upCls(tips[k])}">下回合收盘${tips[k] >= 0 ? '看涨' : '看跌'}，约 ${pctText(tips[k])}（只有你知道）</span></div>` : '',
+    ].join('');
+    let tradeHTML;
+    if (trade) {
+      const cash = p.cash;
+      let maxLots = 0;
+      while (maxLots < 100 && tradeCost(m, maxLots + 1, free) <= cash) maxLots++;
+      const heldLots = mine / E.LOT;
+      const buyOpts = [...new Set([1, 5, 10].filter(n => n < maxLots).concat(maxLots ? [maxLots] : []))];
+      const sellOpts = [...new Set([1, 5].filter(n => n < heldLots).concat(heldLots ? [heldLots] : []))];
+      tradeHTML = `<div class="mk-trade">
+        <div class="mk-side buy"><span class="lbl">买入</span>${buyOpts.length ? buyOpts.map(n => `<button class="tbtn buy" data-lots="${n}"><b>${n === maxLots && n > 1 ? '全仓 ' : ''}${n * E.LOT} 股</b><small>${money(tradeCost(m, n, free))}</small></button>`).join('') : '<em>现金不足 1 手</em>'}</div>
+        <div class="mk-side sell"><span class="lbl">卖出</span>${sellOpts.length ? sellOpts.map(n => `<button class="tbtn sell" data-lots="${-n}"><b>${n === heldLots ? '全部 ' : ''}${n * E.LOT} 股</b><small>+${money(tradeCost(m, -n, free))}</small></button>`).join('') : '<em>没有持股</em>'}</div>
+        <div class="mk-fee">${free ? '🏦 在证券交易所，<b>免手续费</b>' : `手续费 ${E.STOCK_FEE * 100}% · 停在证券交易所可免`} · 每手 ${E.LOT} 股</div>
+      </div>`;
+    } else {
+      tradeHTML = `<div class="mk-trade off">${p && p.bankrupt ? '你已破产，只能看行情' : p ? '轮到你、掷骰子之前（或停在证券交易所时）才能买卖' : '观战中，只能看行情'}</div>`;
+    }
+    const myTotal = p ? E.stockValue(s, me) : 0;
+    openModal('market', `<div class="market">
+      <div class="mk-head">
+        <div class="mk-sign"><span>📈</span><div><b>欢乐证券</b><small>${free ? '证券交易所 · 免手续费' : `第 ${s.round} 回合 · 每回合结束时收盘`}</small></div></div>
+        ${p ? `<div class="mk-wallet"><div><small>现金</small><b>${money(p.cash)}</b></div><div><small>股票市值</small><b>${money(myTotal)}</b></div></div>` : ''}
+      </div>
+      <div class="mk-main">
+        <div class="mk-list">${rows}</div>
+        <div class="mk-detail">
+          <div class="mk-dhead"><span class="mk-em big">${st.emoji}</span><div><b>${st.name}</b><small>${mine ? `你持有 ${mine} 股 · 市值 ${money(mine * m.price)}` : '你还没有持股'}</small></div>
+            <div class="mk-big"><b class="${upCls(chg)}">${priceText(m.price)}</b><small class="${upCls(chg)}">${pctText(chg)}</small></div></div>
+          ${candleSVG(m.hist, st.base)}
+          <div class="mk-info">${lines}</div>
+          ${tradeHTML}
+        </div>
+      </div>
+      <div class="mk-foot"><span class="mk-rule">👑 董事长：这家公司两个片区里每笔过路费，公司额外拿出 ${E.CHAIR_CUT * 100}% 分给董事长</span>
+        ${trade && free ? '<button class="cta ghost" data-leave>离开交易所</button>' : '<button class="cta ghost" data-close>关闭</button>'}</div>
+    </div>`);
+    const on = $('#modalBody .mk-row.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    $('#modalBody').onclick = e => {
+      const r = e.target.closest('[data-stock]');
+      if (r) { mktSel = r.dataset.stock; sfx.tick(); return openMarket(); }
+      const t = e.target.closest('[data-lots]');
+      if (t) {
+        const lots = Number(t.dataset.lots);
+        (lots > 0 ? sfx.coin : sfx.pay)();
+        return send({ type: 'trade', stock: mktSel, lots });
+      }
+      if (e.target.closest('[data-leave]')) { closeModal(); return send({ type: 'skip' }); }
+      if (e.target.closest('[data-close]')) closeModal();
+    };
+  }
+
+  // 右上角的迷你行情
+  function renderMiniMarket(s) {
+    const el = $('#miniMarket');
+    if (!el) return;
+    if (!s.market) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.innerHTML = `<div class="mm-title">📈 行情</div>` + STOCK_KEYS.map(k => {
+      const m = s.market[k], chg = stockChg(m);
+      return `<div class="mm-row"><span>${STOCKS[k].emoji}${STOCKS[k].name.slice(0, 2)}</span><b>${m.price.toFixed(1)}</b><i class="${upCls(chg)}">${pctText(chg)}</i></div>`;
+    }).join('');
+  }
+
+  // 股市收盘播报：一排涨跌柱 + 地图上对应片区飘出涨跌幅
+  async function playMarket(f, total) {
+    const ch = (f.extra && f.extra.changes) || {};
+    const r = view.shown ? view.shown.round : '';
+    showStage(`<div class="ev-market"><div class="em-head">📈 股市收盘<small>第 ${r} 回合</small></div>
+      <div class="em-list">${STOCK_KEYS.map(k => {
+        const v = ch[k] || 0, w = Math.min(100, Math.abs(v) / E.PRICE_LIMIT * 100);
+        return `<div class="em-row"><span class="em-name">${STOCKS[k].emoji} ${STOCKS[k].name}</span>
+          <span class="em-track"><i class="em-bar ${upCls(v)}" style="--w:${w}%"></i></span><b class="${upCls(v)}">${pctText(v)}</b></div>`;
+      }).join('')}</div></div>`);
+    sfx.turn();
+    await wait(60);
+    $('#stage .ev-market') && $('#stage .ev-market').classList.add('go');
+    if (board) {
+      STOCK_KEYS.forEach(k => {
+        const v = ch[k] || 0;
+        if (Math.abs(v) < 0.0005) return;
+        STOCKS[k].groups.forEach(g => {
+          const cells = E.GROUP_CELLS[g];
+          board.floatOn(cells[Math.floor(cells.length / 2)], `${v > 0 ? '▲' : '▼'} ${STOCKS[k].name.slice(0, 2)} ${pctText(v)}`, v > 0 ? '#e03131' : '#12a150');
+        });
+      });
+    }
+    let up = STOCK_KEYS.filter(k => ch[k] > 0).length;
+    (up >= 3 ? sfx.good : sfx.bad)();
+    await stageWait(total - 60);
   }
 
   // ---------- 道具店 / 赌场 ----------
@@ -1439,10 +1627,12 @@ import { sfx, setSoundEnabled } from './sound.js';
     const stillMine = a !== null && a === me && !s.players[me].auto;
     if (modalKind === 'shop') { if (!stillMine || s.phase !== 'shop') closeModal(); else openShop(); }
     if (modalKind === 'casino' && (!stillMine || s.phase !== 'casino')) closeModal();
+    if (modalKind === 'market') openMarket();
     if ((modalKind === 'target' || modalKind === 'card') && (!stillMine || s.phase !== 'roll')) closeModal();
     if (!modalKind && mine && dismissedVisit !== visitKey()) {
       if (s.phase === 'shop') { dismissedVisit = visitKey(); openShop(); }
       if (s.phase === 'casino') { dismissedVisit = visitKey(); openCasino(); }
+      if (s.phase === 'exchange') { dismissedVisit = visitKey(); openMarket(); }
     }
     if (s.phase === 'over' && !view.animating && view.overShown !== s.turn && (!modalKind || modalKind === 'info')) {
       view.overShown = s.turn;
@@ -1482,6 +1672,12 @@ import { sfx, setSoundEnabled } from './sound.js';
   function showRules() {
     openModal('rules', `<h2>📖 玩法说明</h2>${$('.rules ul').outerHTML}
       <h3>角色</h3><ul>${CHAR_KEYS.map(k => `<li>${CHARACTERS[k].emoji} <b>${CHARACTERS[k].name}</b>：${CHARACTERS[k].skill}</li>`).join('')}</ul>
+      <h3>股市</h3><ul>
+        <li>6 支股票各对应地图上的两个片区：${STOCK_KEYS.map(k => `${STOCKS[k].emoji}${STOCKS[k].name}（${STOCKS[k].groups.map(g => GROUPS[g].name).join('、')}）`).join('，')}。</li>
+        <li>轮到你、掷骰子之前可以随时买卖，每手 ${E.LOT} 股，手续费 ${E.STOCK_FEE * 100}%；停在🏦证券交易所免手续费，还能打听到一支股票的内幕。</li>
+        <li>每回合结束时收盘，单回合涨跌不超过 ${E.PRICE_LIMIT * 100}%。片区里买地、盖楼是利好，拆楼、受灾是利空；新闻、涨停卡、跌停卡也会影响股价。</li>
+        <li>👑 某支股票的最大股东（至少 ${E.CHAIR_MIN} 股）是董事长：这两个片区里每笔过路费，公司另外拿出 ${E.CHAIR_CUT * 100}% 分给董事长。</li>
+        <li>股票市值计入总资产；现金不够付钱时会先自动卖股票。</li></ul>
       <h3>神仙</h3><ul>${Object.values(GODS).map(g => `<li>${g.emoji} <b>${g.name}</b>（${g.turns} 回合）：${g.desc}</li>`).join('')}</ul>
       <h3>道具卡</h3><ul>${CARD_KEYS.map(k => `<li>${CARDS[k].emoji} <b>${CARDS[k].name}</b>（${CARDS[k].price} 点券）：${CARDS[k].desc}</li>`).join('')}</ul>`);
   }
@@ -1489,6 +1685,7 @@ import { sfx, setSoundEnabled } from './sound.js';
 
   // ---------- 顶部按钮 ----------
   $('#soundBtn').onclick = () => { soundOn = !soundOn; setSoundEnabled(soundOn); store.set('mono.sound', soundOn); renderLive(); if (soundOn) sfx.coin(); };
+  $('#miniMarket').onclick = () => openMarket();
   $('#viewBtn').onclick = () => {
     if (!board) return;
     const m = board.viewMode === 'follow' ? 'overview' : 'follow';

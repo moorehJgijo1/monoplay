@@ -9,10 +9,10 @@
 
   // ---------- 地图 ----------
   // 城市路网：每个字符是一个路口/格子，相邻的格子之间有路。外圈环路 + 中央大道 + 南北大街，共 5 个岔路口。
-  // 大写/符号：S 起点 J 监狱 H 医院 P 警察局 ? 机会 D 命运 N 新闻 $ 道具店 W 幸运转盘 C 赌场 X 税务局 T 点券站 K 中央公园
+  // 大写/符号：S 起点 J 监狱 H 医院 P 警察局 ? 机会 D 命运 N 新闻 $ 道具店 W 幸运转盘 C 赌场 X 税务局 T 点券站 K 中央公园 E 证券交易所
   // 小写字母：地产片区
   const MAP = [
-    'Saa?a$TbbDbbJ',
+    'Saa?a$EbbDbbJ',
     'c.....d.....e',
     'c.....d.....e',
     'D.....d.....?',
@@ -39,8 +39,27 @@
   const SYMBOLS = {
     S: ['start', '起点'], J: ['jail', '监狱'], H: ['hospital', '医院'], P: ['police', '警察局'], '?': ['chance', '机会'],
     D: ['destiny', '命运'], N: ['news', '新闻'], $: ['shop', '道具店'], W: ['wheel', '幸运转盘'], C: ['casino', '赌场'],
-    X: ['tax', '税务局'], T: ['points', '点券站'], K: ['park', '中央公园'],
+    X: ['tax', '税务局'], T: ['points', '点券站'], K: ['park', '中央公园'], E: ['exchange', '证券交易所'],
   };
+  // ---------- 股票 ----------
+  // 6 家公司，每家对应地图上的两个片区：片区里买地、盖楼会推高股价，拆楼、受灾会压低股价
+  const STOCKS = {
+    energy:  { name: '西部能源', emoji: '⚡', groups: ['a', 'b'], base: 12 },
+    manu:    { name: '华中制造', emoji: '🏭', groups: ['e', 'j'], base: 16 },
+    heavy:   { name: '北方重工', emoji: '⚙️', groups: ['l', 'h'], base: 20 },
+    trade:   { name: '东南贸易', emoji: '📦', groups: ['k', 'c'], base: 24 },
+    yangtze: { name: '长江航运', emoji: '⛴️', groups: ['d', 'f'], base: 30 },
+    finance: { name: '湾区金融', emoji: '🏦', groups: ['g', 'i'], base: 36 },
+  };
+  const STOCK_KEYS = Object.keys(STOCKS);
+  const STOCK_OF = {};
+  STOCK_KEYS.forEach(k => STOCKS[k].groups.forEach(g => { STOCK_OF[g] = k; }));
+  const LOT = 100;          // 每手 100 股
+  const STOCK_FEE = 0.01;   // 手续费 1%（证券交易所免手续费）
+  const CHAIR_MIN = 300;    // 至少持有 300 股且为最大股东才能当董事长
+  const CHAIR_CUT = 0.1;    // 董事长分红：片区内每笔过路费的 10%（公司出钱）
+  const PRICE_LIMIT = 0.1;  // 每回合涨跌幅限制
+
   const MAP_W = MAP[0].length, MAP_H = MAP.length;
   const BOARD = [];
   const AT = {};
@@ -106,7 +125,7 @@
   const GOD_KEYS = Object.keys(GODS);
 
   // ---------- 道具卡 ----------
-  // 16 张道具，分 4 类：move 移动、trick 整人、land 地产、wealth 财富
+  // 19 张道具，分 4 类：move 移动、trick 整人、land 地产、wealth 财富
   const CARD_CATS = {
     move:   { name: '移动', emoji: '🎲', color: '#2f80ed' },
     trick:  { name: '整人', emoji: '😈', color: '#e8452c' },
@@ -130,6 +149,9 @@
     average:   { cat: 'wealth', name: '均富卡', emoji: '⚖️', price: 80, target: 'none', desc: '所有玩家的现金重新平分' },
     free:      { cat: 'wealth', name: '免费卡', emoji: '🎫', price: 30, target: 'passive', desc: '被动生效：自动免付一次过路费' },
     blame:     { cat: 'wealth', name: '嫁祸卡', emoji: '🎭', price: 30, target: 'player', desc: '把你身上的神仙（好坏都行）转嫁给目标' },
+    bull:      { cat: 'wealth', name: '涨停卡', emoji: '📈', price: 50, target: 'stock', desc: '指定一支股票立刻涨停（+10%）' },
+    bear:      { cat: 'wealth', name: '跌停卡', emoji: '📉', price: 50, target: 'stock', desc: '指定一支股票立刻跌停（−10%）' },
+    insider:   { cat: 'wealth', name: '内幕卡', emoji: '🕵️', price: 40, target: 'none', desc: '得知所有股票下回合收盘的大致涨跌' },
   };
   const CARD_KEYS = Object.keys(CARDS);
 
@@ -175,6 +197,7 @@
       maxRounds: opts.maxRounds ?? 30,
       salary: 2000,
       winner: null,
+      market: null,
     };
     const cash = opts.startingCash || 20000;
     const taken = new Set(players.map(p => p.char).filter(c => CHARACTERS[c]));
@@ -188,7 +211,7 @@
       s.players.push({
         id: p.id, name: p.name, char: ch, isBot: !!p.isBot, auto: false, color: '',
         cash, points: 60, pos: START, prev: START_PREV, cards: [], god: null,
-        stay: 0, stayAt: null, turtle: 0, bankrupt: false,
+        stay: 0, stayAt: null, turtle: 0, bankrupt: false, stocks: {}, tips: {},
       });
     });
     if (opts.shuffleOrder !== false) {
@@ -202,6 +225,7 @@
       p.cards = [pick(s, ['remote', 'roadblock', 'stay', 'mine']), pick(s, ['free', 'tax', 'turtle', 'rob'])];
     });
     LANDS.forEach(i => { s.lands[i] = { owner: null, level: 0 }; });
+    initMarket(s);
     spawnGod(s);
     spawnGod(s);
     log(s, `游戏开始！每人 ${money(cash)}、60 点券和 2 张道具卡。${s.players[0].name} 先走。`);
@@ -249,7 +273,87 @@
   function netWorth(s, i) {
     const p = s.players[i];
     if (p.bankrupt) return 0;
-    return p.cash + ownedBy(s, i).reduce((a, c) => a + landValue(s, c), 0);
+    return p.cash + stockValue(s, i) + ownedBy(s, i).reduce((a, c) => a + landValue(s, c), 0);
+  }
+
+  // ---------- 股市 ----------
+  const round1 = n => Math.round(n * 10) / 10;
+  // 下回合收盘的“大势”：随机波动 + 向基准价回归 + 一点点长期上涨。内幕消息透露的就是它
+  function outlook(s, k) {
+    const m = s.market[k], base = STOCKS[k].base;
+    return round1(((rand(s) - 0.5) * 0.16 + 0.06 * (base - m.price) / base + 0.005) * 1000) / 1000;
+  }
+  function initMarket(s) {
+    s.market = {};
+    STOCK_KEYS.forEach(k => { s.market[k] = { price: STOCKS[k].base, hist: [STOCKS[k].base], pressure: 0, last: 0, next: 0 }; });
+    STOCK_KEYS.forEach(k => { s.market[k].next = outlook(s, k); });
+  }
+  // 旧存档、旧房间没有股市，补上
+  function upgradeState(s) {
+    if (!s.market) initMarket(s);
+    s.players.forEach(p => { p.stocks = p.stocks || {}; p.tips = p.tips || {}; });
+    return s;
+  }
+  function stockValue(s, i) {
+    const p = s.players[i];
+    if (!s.market || !p.stocks) return 0;
+    return Math.round(Object.keys(p.stocks).reduce((a, k) => a + p.stocks[k] * s.market[k].price, 0));
+  }
+  function setPrice(s, k, price) {
+    const m = s.market[k];
+    m.price = Math.max(1, round1(price));
+    m.hist[m.hist.length - 1] = m.price;
+  }
+  // 地图上发生的事给相关股票加一点利好/利空，回合结束收盘时生效
+  function nudge(s, group, pct) {
+    const k = STOCK_OF[group];
+    if (k && s.market) s.market[k].pressure = round1((s.market[k].pressure + pct) * 1000) / 1000;
+  }
+  function chairman(s, k) {
+    let best = null, bn = CHAIR_MIN - 1, tie = false;
+    s.players.forEach((p, i) => {
+      const n = (!p.bankrupt && p.stocks && p.stocks[k]) || 0;
+      if (n > bn) { best = i; bn = n; tie = false; } else if (n === bn && best !== null) tie = true;
+    });
+    return tie ? null : best;
+  }
+  function settleMarket(s) {
+    if (!s.market) return;
+    const changes = {};
+    STOCK_KEYS.forEach(k => {
+      const m = s.market[k], old = m.price;
+      const chg = Math.max(-PRICE_LIMIT, Math.min(PRICE_LIMIT, m.next + m.pressure));
+      m.price = Math.max(1, round1(old * (1 + chg)));
+      m.last = round1((m.price / old - 1) * 1000) / 1000;
+      m.hist.push(m.price);
+      if (m.hist.length > 24) m.hist.shift();
+      m.pressure = 0;
+      changes[k] = m.last;
+    });
+    STOCK_KEYS.forEach(k => { s.market[k].next = outlook(s, k); });
+    s.players.forEach(p => { p.tips = {}; });
+    const up = STOCK_KEYS.filter(k => changes[k] > 0).length;
+    const best = STOCK_KEYS.slice().sort((a, b) => changes[b] - changes[a])[0];
+    const pct = v => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
+    log(s, `📈 股市收盘：${STOCK_KEYS.map(k => `${STOCKS[k].name} ${pct(changes[k])}`).join('，')}`);
+    fx(s, '📈', '股市收盘', `${up} 涨 ${STOCK_KEYS.length - up} 跌，领涨：${STOCKS[best].name} ${pct(changes[best])}`, 'info', null, { changes });
+  }
+  // 买卖股票：lots 为正是买入，为负是卖出（单位：手）
+  function tradeStock(s, i, k, lots, free) {
+    const p = s.players[i], m = s.market[k], n = Math.abs(lots) * LOT;
+    const gross = Math.round(n * m.price), fee = free ? 0 : Math.max(1, Math.round(gross * STOCK_FEE));
+    if (lots > 0) {
+      if (p.cash < gross + fee) return { error: '现金不足' };
+      p.cash -= gross + fee;
+      p.stocks[k] = (p.stocks[k] || 0) + n;
+    } else {
+      if ((p.stocks[k] || 0) < n) return { error: '持股不足' };
+      p.cash += gross - fee;
+      p.stocks[k] -= n;
+      if (!p.stocks[k]) delete p.stocks[k];
+    }
+    log(s, `${lots > 0 ? '📈' : '📉'} ${p.name} ${lots > 0 ? '买入' : '卖出'} ${STOCKS[k].name} ${n} 股，每股 ¥${m.price.toFixed(1)}${fee ? `（手续费 ${money(fee)}）` : ''}`);
+    return { ok: true };
   }
 
   // ---------- 付款与破产 ----------
@@ -258,6 +362,17 @@
     amount = Math.round(amount);
     if (amount <= 0) return true;
     const p = s.players[from];
+    if (p.cash < amount && p.stocks) {
+      for (const k of Object.keys(p.stocks).sort((a, b) => s.market[b].price - s.market[a].price)) {
+        while (p.cash < amount && p.stocks[k]) {
+          const n = Math.min(p.stocks[k], Math.ceil((amount - p.cash) / s.market[k].price / LOT) * LOT);
+          p.cash += Math.round(n * s.market[k].price);
+          p.stocks[k] -= n;
+          if (!p.stocks[k]) delete p.stocks[k];
+          log(s, `${p.name} 抛售 ${STOCKS[k].name} ${n} 股抵债`);
+        }
+      }
+    }
     if (p.cash < amount) {
       const own = ownedBy(s, from).sort((a, b) => landValue(s, a) - landValue(s, b));
       for (const c of own) {
@@ -265,6 +380,7 @@
         const v = round10(landValue(s, c) / 2);
         p.cash += v;
         s.lands[c] = { owner: null, level: 0 };
+        nudge(s, BOARD[c].group, -0.02);
         log(s, `${p.name} 变卖 ${BOARD[c].name}，换得 ${money(v)}`);
       }
     }
@@ -281,8 +397,9 @@
 
   function bankrupt(s, i) {
     const p = s.players[i];
-    ownedBy(s, i).forEach(c => { s.lands[c] = { owner: null, level: 0 }; });
+    ownedBy(s, i).forEach(c => { nudge(s, BOARD[c].group, -0.02); s.lands[c] = { owner: null, level: 0 }; });
     p.cash = 0;
+    p.stocks = {};
     p.cards = [];
     p.god = null;
     p.stay = 0;
@@ -474,6 +591,14 @@
       case 'police':
         sendTo(s, i, 'jail', 2, '被警察带走');
         return;
+      case 'exchange': {
+        // 证券交易所：免手续费买卖，还能打听到一支股票的内幕
+        const k = pick(s, STOCK_KEYS);
+        p.tips[k] = s.market[k].next;
+        s.phase = 'exchange';
+        log(s, `🏦 ${p.name} 走进证券交易所，打听到了${STOCKS[k].name}的内幕消息`);
+        return;
+      }
       case 'park':
         p.points += 20;
         log(s, `🌳 ${p.name} 在中央公园散步，心情大好，获得 20 点券`);
@@ -488,6 +613,7 @@
     const god = p.god && p.god.key;
     if (god === 'devil' && ld.level > 0) {
       ld.level = 0;
+      nudge(s, c.group, -0.03);
       fx(s, '😈', '恶魔作祟', `${c.name} 的建筑被恶魔摧毁了`, 'bad', i);
       log(s, `😈 恶魔摧毁了 ${c.name} 上的建筑`);
     }
@@ -538,7 +664,15 @@
     if (god === 'shuai') rent *= 2;
     log(s, `💸 ${p.name} 支付过路费 ${money(rent)} 给 ${owner.name}${god === 'shuai' ? '（衰神附身，翻倍）' : ''}`);
     if (rent >= 3000) fx(s, '💸', '高额过路费', `${p.name} 付给 ${owner.name} ${money(rent)}`, 'bad', i);
-    pay(s, i, ld.owner, rent, `${c.name} 的过路费`);
+    if (!pay(s, i, ld.owner, rent, `${c.name} 的过路费`)) return;
+    // 董事长分红：这家公司片区里的过路费，公司拿出 10% 分给董事长
+    const k = STOCK_OF[c.group], ch = k ? chairman(s, k) : null;
+    const cut = round10(rent * CHAIR_CUT);
+    if (ch !== null && cut > 0) {
+      s.players[ch].cash += cut;
+      log(s, `🏦 ${pn(s, ch)} 是${STOCKS[k].name}的董事长，分红 ${money(cut)}`);
+      fx(s, '🏦', '董事长分红', `${pn(s, ch)} 获得${STOCKS[k].name}分红 ${money(cut)}`, 'good', ch);
+    }
   }
 
   // ---------- 机会 / 命运 / 新闻 / 转盘 ----------
@@ -564,7 +698,12 @@
 
   const DESTINY = [
     { text: '中了彩票，获得 ¥3000', run: (s, i) => { s.players[i].cash += 3000; }, tone: 'good' },
-    { text: '股票大涨，获得 ¥1500', run: (s, i) => { s.players[i].cash += 1500; }, tone: 'good' },
+    { text: '理财到期，获得 ¥1500', run: (s, i) => { s.players[i].cash += 1500; }, tone: 'good' },
+    { text: '老同学送你 200 股股票', run: (s, i) => {
+      const k = pick(s, STOCK_KEYS), p = s.players[i];
+      p.stocks[k] = (p.stocks[k] || 0) + 200;
+      log(s, `${p.name} 获得 ${STOCKS[k].name} 200 股`);
+    }, tone: 'good' },
     { text: '捡到钱包，获得 ¥500', run: (s, i) => { s.players[i].cash += 500; }, tone: 'good' },
     { text: '继承远房亲戚遗产 ¥5000', run: (s, i) => { s.players[i].cash += 5000; }, tone: 'good' },
     { text: '今天是你生日，每人送你 ¥500', run: (s, i) => { alive(s).filter(j => j !== i).forEach(j => pay(s, j, i, 500, '生日红包')); }, tone: 'good' },
@@ -604,7 +743,15 @@
 
   const NEWS = [
     { text: '政府发放消费券，每人获得 ¥1000', run: s => alive(s).forEach(j => { s.players[j].cash += 1000; }) },
-    { text: '股市崩盘，每人损失 15% 现金', run: s => alive(s).forEach(j => { const p = s.players[j]; p.cash -= round10(p.cash * 0.15); }) },
+    { text: '股市崩盘！所有股票下跌 8%', run: s => STOCK_KEYS.forEach(k => setPrice(s, k, s.market[k].price * 0.92)) },
+    { text: '牛市来了！所有股票上涨 8%', run: s => STOCK_KEYS.forEach(k => setPrice(s, k, s.market[k].price * 1.08)) },
+    { dyn: s => { const k = pick(s, STOCK_KEYS); setPrice(s, k, s.market[k].price * 1.1); return `${STOCKS[k].name}签下大订单，股价涨停 +10%`; } },
+    { dyn: s => { const k = pick(s, STOCK_KEYS); setPrice(s, k, s.market[k].price * 0.9); return `${STOCKS[k].name}爆出财务丑闻，股价跌停 −10%`; } },
+    { dyn: s => {
+      const k = pick(s, STOCK_KEYS), per = round1(s.market[k].price * 0.08);
+      alive(s).forEach(j => { const p = s.players[j]; const n = p.stocks[k] || 0; if (n) { p.cash += Math.round(n * per); log(s, `${p.name} 领到 ${money(n * per)} 红利`); } });
+      return `${STOCKS[k].name}派发红利，每股 ¥${per.toFixed(1)}`;
+    } },
     { text: '全民纳税，每人缴纳 10% 现金', run: s => alive(s).forEach(j => { const p = s.players[j]; p.cash -= round10(p.cash * 0.1); }) },
     { text: '劫富济贫：首富把 20% 现金分给最穷的人', run: s => {
       const order = alive(s).sort((a, b) => netWorth(s, b) - netWorth(s, a));
@@ -616,11 +763,13 @@
     { text: '地震！一个片区的建筑全部降一级', run: s => {
       const g = pick(s, Object.keys(GROUP_CELLS));
       GROUP_CELLS[g].forEach(c => { if (s.lands[c].level > 0) s.lands[c].level--; });
+      nudge(s, g, -0.06);
       log(s, `受灾片区：${GROUPS[g].name}`);
     } },
     { text: '房价上涨！一个片区已有主的地产各升一级', run: s => {
       const g = pick(s, Object.keys(GROUP_CELLS));
       GROUP_CELLS[g].forEach(c => { const ld = s.lands[c]; if (ld.owner !== null && ld.level < MAX_LEVEL) ld.level++; });
+      nudge(s, g, 0.05);
       log(s, `受益片区：${GROUPS[g].name}`);
     } },
     { text: '台风来袭，一位玩家受伤住院 2 天', run: s => { const j = pick(s, alive(s)); sendTo(s, j, 'hospital', 2, '被台风刮伤'); } },
@@ -637,9 +786,10 @@
 
   function news(s) {
     const n = pick(s, NEWS);
-    log(s, `📰 新闻快报：${n.text}`);
-    fx(s, '📰', '新闻快报', n.text, 'info');
-    n.run(s);
+    const text = n.dyn ? n.dyn(s) : n.text;
+    log(s, `📰 新闻快报：${text}`);
+    fx(s, '📰', '新闻快报', text, 'info');
+    if (!n.dyn) n.run(s);
   }
 
   const WHEEL = [
@@ -689,6 +839,8 @@
       case 'tax': case 'frame': t = others.map(j => s.players[j].id); break;
       case 'rob': t = others.filter(j => s.players[j].cards.length).map(j => s.players[j].id); break;
       case 'blame': if (!p.god) return null; t = others.map(j => s.players[j].id); break;
+      case 'bull': case 'bear': t = STOCK_KEYS.slice(); break;
+      case 'insider': return [];
       case 'monster': t = lands(c => s.lands[c].level > 0); break;
       case 'angelcard': t = lands(c => GROUP_CELLS[BOARD[c].group].some(x => s.lands[x].owner !== null && s.lands[x].level < MAX_LEVEL)); break;
       case 'devilcard': t = lands(c => GROUP_CELLS[BOARD[c].group].some(x => s.lands[x].level > 0)); break;
@@ -728,16 +880,24 @@
         say(`花 ${money(v)} 强行买下了 ${pn(s, owner)} 的 ${BOARD[p.pos].name}`);
         break;
       }
-      case 'monster': s.lands[target].level = 0; say(`怪兽踏平了 ${BOARD[target].name}`, 'bad'); break;
+      case 'monster': s.lands[target].level = 0; nudge(s, BOARD[target].group, -0.04); say(`怪兽踏平了 ${BOARD[target].name}`, 'bad'); break;
+      case 'bull': setPrice(s, target, s.market[target].price * 1.1); say(`${STOCKS[target].name}涨停 +10%`, 'good'); break;
+      case 'bear': setPrice(s, target, s.market[target].price * 0.9); say(`${STOCKS[target].name}跌停 −10%`, 'bad'); break;
+      case 'insider':
+        STOCK_KEYS.forEach(k => { p.tips[k] = s.market[k].next; });
+        say('打听到了所有股票下回合的走势');
+        break;
       case 'angelcard': {
         const g = BOARD[target].group;
         GROUP_CELLS[g].forEach(c => { const ld = s.lands[c]; if (ld.owner !== null && ld.level < MAX_LEVEL) ld.level++; });
+        nudge(s, g, 0.06);
         say(`${GROUPS[g].name}片区的地产全部升级`, 'good');
         break;
       }
       case 'devilcard': {
         const g = BOARD[target].group;
         GROUP_CELLS[g].forEach(c => { s.lands[c].level = 0; });
+        nudge(s, g, -0.08);
         say(`${GROUPS[g].name}片区的建筑全部化为乌有`, 'bad');
         break;
       }
@@ -760,7 +920,7 @@
   }
 
   // ---------- 回合流转 ----------
-  const DECISION_PHASES = ['buy', 'upgrade', 'shop', 'casino'];
+  const DECISION_PHASES = ['buy', 'upgrade', 'shop', 'casino', 'exchange'];
   const WAIT_PHASES = [...DECISION_PHASES, 'fork'];
 
   function settle(s) {
@@ -791,6 +951,7 @@
           finish(s, best, `${s.maxRounds} 回合结束，按总资产排名`);
           return;
         }
+        settleMarket(s);
         log(s, `===== 第 ${s.round} 回合 =====`);
         if (rand(s) < 0.6) spawnGod(s);
       }
@@ -810,6 +971,7 @@
     s.forcedDice = null;
     s.fork = null;
     s.cardsUsed = 0;
+    s.trades = 0;
     const p = s.players[n];
     log(s, `—— 轮到 ${p.name} ——`);
     if (p.god && p.god.key === 'caishen') { p.cash += 1000; log(s, `💰 财神送给 ${p.name} ${money(1000)}`); }
@@ -823,6 +985,7 @@
     const i = s.players.findIndex(p => p.id === playerId);
     if (i < 0) return { error: '你不在这局游戏中' };
     if (!a || typeof a.type !== 'string') return { error: '无效操作' };
+    upgradeState(s);
     const p = s.players[i];
 
     if (a.type === 'setAuto') {
@@ -850,7 +1013,7 @@
         const tgt = CARDS[key].target;
         let target = null;
         if (tgt !== 'none') {
-          target = tgt === 'player' ? String(a.target) : Number(a.target);
+          target = tgt === 'player' || tgt === 'stock' ? String(a.target) : Number(a.target);
           if (!targets.includes(target)) return { error: '目标无效' };
         }
         p.cards.splice(a.index, 1);
@@ -859,6 +1022,15 @@
         useCard(s, i, key, target);
         if (s.turn === turn && s.phase === 'roll' && (p.stay > 0 || p.bankrupt)) finishTurn(s);
         return { ok: true };
+      }
+      case 'trade': {
+        if (s.phase !== 'roll' && s.phase !== 'exchange') return { error: '只能在掷骰子前或证券交易所里买卖股票' };
+        if (!STOCKS[a.stock]) return { error: '没有这支股票' };
+        const lots = Math.trunc(Number(a.lots));
+        if (!lots || Math.abs(lots) > 100) return { error: '数量无效' };
+        const r = tradeStock(s, i, a.stock, lots, s.phase === 'exchange');
+        if (r.ok) s.trades = (s.trades || 0) + 1;
+        return r;
       }
       case 'roll': {
         if (s.phase !== 'roll') return { error: '现在不能掷骰子' };
@@ -885,6 +1057,7 @@
         p.cash -= price;
         s.lands[p.pos].owner = i;
         log(s, `🏷️ ${p.name} 花 ${money(price)} 买下 ${BOARD[p.pos].name}`);
+        nudge(s, BOARD[p.pos].group, 0.02);
         s.phase = 'done';
         settle(s);
         return { ok: true };
@@ -897,6 +1070,7 @@
         if (p.cash < cost) return { error: '现金不足' };
         p.cash -= cost;
         ld.level += levels;
+        nudge(s, BOARD[p.pos].group, 0.015 * levels);
         log(s, `🔨 ${p.name} 花 ${money(cost)} 把 ${BOARD[p.pos].name} 升级为${LEVELS[ld.level]}`);
         if (ld.level === MAX_LEVEL) fx(s, '🏙️', '摩天楼落成', `${p.name} 的 ${BOARD[p.pos].name} 盖起了摩天楼！`, 'good', i);
         s.phase = 'done';
@@ -956,6 +1130,7 @@
       case 'skip': {
         if (!DECISION_PHASES.includes(s.phase)) return { error: '现在不能这样做' };
         if (s.phase === 'buy') log(s, `${p.name} 没有买 ${BOARD[p.pos].name}`);
+        if (s.phase === 'exchange') log(s, `${p.name} 离开了证券交易所`);
         s.phase = 'done';
         settle(s);
         return { ok: true };
@@ -971,12 +1146,13 @@
     if (f.title === '新闻快报') return 'news';
     if (f.title === '幸运转盘') return 'wheel';
     if (f.title === '赌场') return 'casino';
+    if (f.title === '股市收盘') return 'market';
     if (f.title === '破产' || f.title === '游戏结束') return 'big';
     if (/附身|显灵|祝福|作祟|保佑/.test(f.title)) return 'god';
     if (CARD_TITLES.has(f.title)) return 'item';
     return 'toast';
   }
-  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 6000, casino: 4600, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
+  const PACE = { step: 300, jump: 550, dice: 4000, card: 2600, news: 2800, wheel: 6000, casino: 4600, market: 2600, big: 2800, god: 2400, item: 1600, toast: 450, turn: 1000, settle: 500, think: 900 };
   const paceMark = s => ({ seq: s.seq, dice: s.diceSeq || 0, turn: s.turn });
   // 估算从 mark 之后的新动画（走棋、骰子、事件、换人）需要播放多少毫秒
   function paceMs(s, mark) {
@@ -995,5 +1171,6 @@
     createGame, applyAction, pendingActor, cardTargets,
     rentFor, netWorth, ownedBy, landValue, upgradeCost, buyPrice, cardPrice, money, dist, forwardOptions, landings,
     MAP_W, MAP_H, ADJ, START,
+    STOCKS, STOCK_KEYS, STOCK_OF, LOT, STOCK_FEE, CHAIR_MIN, CHAIR_CUT, PRICE_LIMIT, stockValue, chairman, upgradeState,
   };
 });

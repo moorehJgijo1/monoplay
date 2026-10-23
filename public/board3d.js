@@ -5,13 +5,14 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
 import * as CANNON from './vendor/cannon-es.js';
 import { buildCharacter } from './characters.js';
+import { buildDistricts } from './districts.js';
 
 const U = 2; // 相邻路口的间距
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
 const TYPE_STYLE = {
   start: ['#ffd34d', '🏁'], chance: ['#ffb340', '❓'], destiny: ['#b388ff', '🔮'], news: ['#74b9ff', '📰'],
   shop: ['#55efc4', '🏪'], wheel: ['#fd79a8', '🎡'], casino: ['#ff7675', '🎰'], points: ['#ffeaa7', '🎟️'],
-  tax: ['#b2bec3', '🧾'], police: ['#7f9cf5', '👮'], jail: ['#a4a4a4', '🚔'], hospital: ['#ffffff', '🏥'], park: ['#7bed9f', '🌳'],
+  tax: ['#b2bec3', '🧾'], exchange: ['#ff6b6b', '🏦'], police: ['#7f9cf5', '👮'], jail: ['#a4a4a4', '🚔'], hospital: ['#ffffff', '🏥'], park: ['#7bed9f', '🌳'],
 };
 const LEVEL_COLORS = { glass: '#8fd0ff', wall: '#fbf8f1' };
 
@@ -155,6 +156,44 @@ export function createBoard3D(container, E, opts = {}) {
     lotDir[i] = d;
   });
 
+  // 路网围出的街区（不含路口格子的连通区域），每块找出其中最大的一片空地，用来摆主题地标
+  const blocks = (() => {
+    const seen = new Set(), out = [];
+    for (let z = 0; z < MAP_H; z++) for (let x = 0; x < MAP_W; x++) {
+      const k0 = x + ',' + z;
+      if (occupied.has(k0) || seen.has(k0)) continue;
+      const cells = [], stack = [[x, z]];
+      seen.add(k0);
+      while (stack.length) {
+        const [cx, cz] = stack.pop();
+        cells.push([cx, cz]);
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = cx + dx, nz = cz + dz, k = nx + ',' + nz;
+          if (nx < 0 || nz < 0 || nx >= MAP_W || nz >= MAP_H || occupied.has(k) || seen.has(k)) continue;
+          seen.add(k);
+          stack.push([nx, nz]);
+        }
+      }
+      if (cells.length < 6) continue;
+      const xs = cells.map(c => c[0]), zs = cells.map(c => c[1]);
+      const b = { cells, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) };
+      b.cx = (b.x0 + b.x1) / 2; b.cz = (b.z0 + b.z1) / 2;
+      const free = new Set(cells.filter(([cx, cz]) => !usedLots.has(cx + ',' + cz)).map(c => c[0] + ',' + c[1]));
+      let best = null;
+      for (let x0 = b.x0; x0 <= b.x1; x0++) for (let x1 = x0; x1 <= b.x1; x1++) for (let z0 = b.z0; z0 <= b.z1; z0++) for (let z1 = z0; z1 <= b.z1; z1++) {
+        let ok = true;
+        for (let xx = x0; xx <= x1 && ok; xx++) for (let zz = z0; zz <= z1 && ok; zz++) ok = free.has(xx + ',' + zz);
+        const area = (x1 - x0 + 1) * (z1 - z0 + 1);
+        if (ok && (!best || area > best.area)) best = { x0, x1, z0, z1, area };
+      }
+      b.free = best;
+      if (best) out.push(b);
+    }
+    return out;
+  })();
+  const inBlock = new Set(blocks.flatMap(b => b.cells.map(c => c[0] + ',' + c[1])));
+  const districts = buildDistricts(scene, blocks, world, U);
+
   // 树
   const trunkMat = std('#8b5a2b'), leafMats = ['#3fae49', '#57c75e', '#2e8b57', '#6bcf63'].map(c => std(c, { flatShading: true }));
   const trunkGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.6, 6), leafGeo = new THREE.IcosahedronGeometry(0.45, 0);
@@ -178,6 +217,7 @@ export function createBoard3D(container, E, opts = {}) {
       const key = x + ',' + z;
       if (occupied.has(key) || usedLots.has(key)) continue;
       const inside = x >= 0 && x < MAP_W && z >= 0 && z < MAP_H;
+      if (inBlock.has(key)) continue; // 街区里摆的是主题景观
       const p = world(x, z);
       if (inside || nearRoad(x, z)) {
         if (rng() < 0.55) {
@@ -733,6 +773,7 @@ export function createBoard3D(container, E, opts = {}) {
       else if (t.trail > 0) { t.trail = Math.max(0, t.trail - dt * 0.8); t.glow.material.opacity = t.trail * 0.55; }
       else t.glow.material.opacity = 0;
     });
+    try { districts.tick(clock.t, dt); } catch (e) { /* 装饰动画出错不影响游戏 */ }
     renderer.render(scene, camera);
   }
   requestAnimationFrame(frame);
@@ -1043,6 +1084,7 @@ export function createBoard3D(container, E, opts = {}) {
       BOARD.forEach((_, i) => drawTile(i, s));
       LANDS.forEach(i => setLot(i, s));
       syncMarkers(s);
+      if (s.market && E.STOCKS) districts.setMarket(E.STOCK_KEYS.map(k => ({ label: E.STOCKS[k].name.slice(0, 2), price: s.market[k].price, hist: s.market[k].hist })));
       pieces.forEach((pc, k) => {
         pc.group.visible = alive[k];
         if (!pc.moving) pc.group.position.copy(pieceTarget(k));
@@ -1095,6 +1137,8 @@ export function createBoard3D(container, E, opts = {}) {
       pc.moving = false;
     },
     flash,
+    // 在格子上方飘字（股市收盘时在片区上飘涨跌幅）
+    floatOn(i, text, bg) { floatText(cellPos(i).setY(1.9), text, bg); },
     setSelectable(cells) { selectable = cells ? new Set(cells) : null; },
     // 金色闪烁：预计会停下的格子
     setHighlight(cells) { highlight = cells && cells.length ? new Set(cells) : null; },

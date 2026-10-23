@@ -61,15 +61,18 @@ function lobbyView(room) {
     seats: room.seats.map(s => ({ id: s.id, name: s.name, char: s.char, isBot: s.isBot, online: s.isBot || s.online > 0 })),
   };
 }
-function publicState(state) {
+// 发给某位玩家的状态：去掉随机种子（防止预测骰子）、股票的下回合走势，以及别人打听到的内幕消息
+function publicState(state, seatId) {
   if (!state) return null;
-  const { rng, ...rest } = state; // 去掉随机种子，防止预测骰子
-  return rest;
+  const { rng, market, players, ...rest } = state;
+  const m = {};
+  for (const k in market || {}) { const { next, ...v } = market[k]; m[k] = v; }
+  return { ...rest, market: market ? m : null, players: players.map(p => (p.id === seatId ? p : { ...p, tips: {} })) };
 }
 
 function broadcast(room) {
-  const base = { room: lobbyView(room), state: publicState(room.state), chat: room.chat.slice(-50) };
-  for (const c of room.clients) c.res.write(`data: ${JSON.stringify({ you: c.seatId, ...base })}\n\n`);
+  const base = { room: lobbyView(room), chat: room.chat.slice(-50) };
+  for (const c of room.clients) c.res.write(`data: ${JSON.stringify({ you: c.seatId, ...base, state: publicState(room.state, c.seatId) })}\n\n`);
 }
 
 // ---------- 电脑/托管玩家 ----------

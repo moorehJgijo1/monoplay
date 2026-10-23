@@ -42,6 +42,7 @@
       case 'tax': return -p.cash * 0.1;
       case 'shop': return p.points >= 40 ? 400 : 0;
       case 'points': case 'wheel': case 'destiny': return 300;
+      case 'exchange': return 250;
       case 'chance': return 200;
       default: return 0;
     }
@@ -129,6 +130,18 @@
           if (bestScore - avg > 900) add(60, best);
           break;
         }
+        case 'bull': case 'bear': {
+          // 涨停拉自己持股最多的，跌停砸对手当董事长的
+          if (key === 'bull') {
+            const k = Object.keys(p.stocks || {}).sort((a, b) => p.stocks[b] * s.market[b].price - p.stocks[a] * s.market[a].price)[0];
+            if (k && p.stocks[k] * s.market[k].price > 3000) add(50, k);
+          } else {
+            const k = E.STOCK_KEYS.find(x => { const ch = E.chairman(s, x); return ch !== null && ch !== i && !(p.stocks && p.stocks[x]); });
+            if (k) add(35, k);
+          }
+          break;
+        }
+        case 'insider': if (p.cash > 8000) add(55); break;
         case 'stay': if (cellScore(s, i, p.pos) >= 800 && BOARD[p.pos].type === 'land') add(30); break;
       }
     });
@@ -140,7 +153,40 @@
     return GROUP_CELLS[BOARD[cell].group].every(c => c === cell || s.lands[c].owner === i);
   }
 
-  const SHOP_PREF = ['remote', 'free', 'monster', 'tax', 'mine', 'angelcard', 'buyland', 'average', 'frame', 'blame', 'turtle', 'stay', 'rob', 'roadblock'];
+  // ---------- 炒股 ----------
+  // 对一支股票的预期收益：有内幕就信内幕，否则看股价离基准价多远（低买高卖）和地图上的利好利空；
+  // 再加上董事长的价值（快当上、或者正当着董事长的股票更想拿着）
+  function stockOutlook(s, i, k) {
+    const m = s.market[k], base = E.STOCKS[k].base, p = s.players[i];
+    const tip = p.tips && p.tips[k];
+    let v = (tip !== undefined ? tip : 0.01 + 0.1 * (base - m.price) / base) + m.pressure;
+    const mine = (p.stocks && p.stocks[k]) || 0;
+    const ch = E.chairman(s, k);
+    if (ch === i) v += 0.03;
+    else if (mine > 0 || ch === null) v += 0.015;
+    return v;
+  }
+  function chooseTrade(s, i, free) {
+    const p = s.players[i];
+    if (!s.market) return null;
+    const res = reserve(s, i);
+    // 现金太少先卖股票
+    const held = Object.keys(p.stocks || {});
+    if (p.cash < res * 0.6 && held.length) {
+      const k = held.sort((a, b) => stockOutlook(s, i, a) - stockOutlook(s, i, b))[0];
+      return { type: 'trade', stock: k, lots: -Math.max(1, Math.min(p.stocks[k] / E.LOT, Math.ceil((res - p.cash) / (s.market[k].price * E.LOT)))) };
+    }
+    for (const k of held) if (stockOutlook(s, i, k) < -0.035) return { type: 'trade', stock: k, lots: -p.stocks[k] / E.LOT };
+    const spare = p.cash - res * 1.3 - 3000;
+    if (spare <= 0) return null;
+    const pickK = E.STOCK_KEYS.map(k => ({ k, v: stockOutlook(s, i, k) + rnd(s, i * 31 + E.STOCK_KEYS.indexOf(k) * 7) * 0.03 }))
+      .filter(x => x.v > (free ? 0.01 : 0.025)).sort((a, b) => b.v - a.v)[0];
+    if (!pickK) return null;
+    const lots = Math.min(5, Math.floor(spare / (s.market[pickK.k].price * E.LOT * (1 + E.STOCK_FEE))));
+    return lots > 0 ? { type: 'trade', stock: pickK.k, lots } : null;
+  }
+
+  const SHOP_PREF = ['remote', 'free', 'monster', 'tax', 'mine', 'angelcard', 'buyland', 'average', 'frame', 'blame', 'turtle', 'stay', 'rob', 'roadblock', 'insider', 'bull'];
 
   function decide(s, playerId) {
     const i = s.players.findIndex(p => p.id === playerId);
@@ -149,7 +195,9 @@
     const res = reserve(s, i);
     switch (s.phase) {
       case 'roll':
-        return chooseCard(s, i) || { type: 'roll' };
+        return chooseCard(s, i) || ((s.trades || 0) < 1 && chooseTrade(s, i, false)) || { type: 'roll' };
+      case 'exchange':
+        return ((s.trades || 0) < 4 && chooseTrade(s, i, true)) || { type: 'skip' };
       case 'fork': {
         const { options, left } = s.fork;
         let best = options[0], bestV = -Infinity;
