@@ -840,19 +840,44 @@ import { sfx, setSoundEnabled } from './sound.js';
     if (p.turtle) parts.push(`🐢×${p.turtle}`);
     return parts.join(' ');
   }
-
+  // 状态做成彩色小标签：好事绿、坏事红
+  function statusChips(p) {
+    const c = [];
+    if (p.stay > 0) c.push(['bad', p.stayAt === 'jail' ? `🚔 坐牢 ${p.stay} 天` : p.stayAt === 'hospital' ? `🏥 住院 ${p.stay} 天` : `💤 冬眠 ${p.stay} 回合`]);
+    if (p.god) { const g = GODS[p.god.key]; c.push([g.good ? 'good' : 'bad', `${g.emoji} ${g.name} ${p.god.turns} 回合`]); }
+    if (p.turtle) c.push(['bad', `🐢 乌龟 ${p.turtle} 次`]);
+    if (p.cards.includes('free')) c.push(['good', '🎫 免费卡']);
+    return c.map(([t, x]) => `<span class="chip ${t}">${x}</span>`).join('');
+  }
   function renderPlayers(s) {
     const me = ctrl.state ? viewer(ctrl.state) : -1;
     const online = ctrl.mode === 'online' && ctrl.room ? Object.fromEntries(ctrl.room.seats.map(x => [x.id, x.online])) : null;
+    const worth = s.players.map((p, k) => E.netWorth(s, k));
+    const order = s.players.map((p, k) => k).filter(k => !s.players[k].bankrupt).sort((a, b) => worth[b] - worth[a]);
+    const top = Math.max(1, ...worth);
+    const medal = ['🥇', '🥈', '🥉', '4'];
     $('#playersPanel').innerHTML = s.players.map((p, k) => {
       const ch = CHARACTERS[p.char];
-      const tags = [k === me ? '你' : '', p.isBot ? '电脑' : '', p.auto ? '托管' : '', online && !p.isBot && !online[p.id] ? '离线' : ''].filter(Boolean);
+      const rank = order.indexOf(k);
+      const cur = k === s.current && s.phase !== 'over';
+      const tags = [p.isBot ? '电脑' : '', p.auto ? '托管' : '', online && !p.isBot && !online[p.id] ? '离线' : ''].filter(Boolean);
       const shownCash = view.cash[k] ?? p.cash;
-      return `<div class="pl ${k === s.current && s.phase !== 'over' ? 'cur' : ''} ${p.bankrupt ? 'dead' : ''}" style="--pc:${p.color}" data-player="${k}">
-        <span class="av">${ch.emoji}</span>
-        <span class="nm">${esc(p.name)} <small>${ch.name}${tags.length ? ' · ' + tags.join(' · ') : ''}</small></span>
-        <span class="cash" data-cash="${k}">${p.bankrupt ? '破产' : money(shownCash)}</span>
-        <span class="meta"><span>📍${BOARD[view.pos[k] ?? p.pos].name}</span><span>🎟️${p.points}</span><span>🃏${p.cards.length}</span><span>🏠${E.ownedBy(s, k).length}</span><span>总资产 ${shortMoney(E.netWorth(s, k))}</span>${statusText(p) ? `<span class="st">${statusText(p)}</span>` : ''}</span>
+      return `<div class="pl ${cur ? 'cur' : ''} ${p.bankrupt ? 'dead' : ''} ${k === me ? 'me' : ''}" style="--pc:${p.color}" data-player="${k}">
+        <div class="pl-top">
+          <span class="rank r${rank}">${p.bankrupt ? '💀' : medal[rank]}</span>
+          <span class="av">${ch.emoji}</span>
+          <div class="who"><b>${esc(p.name)}</b>${k === me ? '<span class="you">你</span>' : ''}${cur ? '<span class="acting">行动中</span>' : ''}
+            <small>${ch.name}${tags.length ? ' · ' + tags.join(' · ') : ''} · 📍${BOARD[view.pos[k] ?? p.pos].name}</small></div>
+          <div class="money"><small>现金</small><span class="cash" data-cash="${k}">${p.bankrupt ? '破产' : money(shownCash)}</span></div>
+        </div>
+        <div class="stats">
+          <span><i>总资产</i><b>${shortMoney(worth[k])}</b></span>
+          <span><i>地产</i><b>${E.ownedBy(s, k).length}</b></span>
+          <span><i>道具卡</i><b>${p.cards.length}</b></span>
+          <span><i>点券</i><b>${p.points}</b></span>
+        </div>
+        <div class="bar"><i style="width:${Math.round(worth[k] / top * 100)}%"></i></div>
+        ${statusChips(p) ? `<div class="pl-bottom">${statusChips(p)}</div>` : ''}
       </div>`;
     }).join('');
     s.players.forEach((p, k) => { if (!p.bankrupt && view.cash[k] !== p.cash) countCash(k, p.cash); });
@@ -883,9 +908,26 @@ import { sfx, setSoundEnabled } from './sound.js';
     const last = s.log.length ? s.log[s.log.length - 1].n : 0;
     if (last === view.logSeq) return;
     view.logSeq = last;
-    el.innerHTML = s.log.map(l => `<div class="${l.text.startsWith('——') || l.text.startsWith('=====') ? 'turn' : ''}">${esc(l.text)}</div>`).join('');
+    // 玩家名字用各自的颜色标出来；每条记录左边的色条是做这件事的玩家
+    const names = s.players.map((p, k) => [esc(p.name), k]).sort((a, b) => b[0].length - a[0].length);
+    el.innerHTML = s.log.map(l => {
+      let t = esc(l.text);
+      if (/^=====/.test(l.text)) return `<div class="round">${t.replace(/=+/g, '').trim()}</div>`;
+      const turn = l.text.match(/^—— 轮到 (.+?) ——$/);
+      if (turn) {
+        const k = s.players.findIndex(p => p.name === turn[1]);
+        const p = s.players[k];
+        return p ? `<div class="turn" style="--pc:${p.color}"><span class="av">${CHARACTERS[p.char].emoji}</span>${esc(p.name)} 的回合</div>` : `<div class="turn">${t}</div>`;
+      }
+      let first = -1, firstAt = Infinity;
+      names.forEach(([n, k]) => { const at = t.indexOf(n); if (at >= 0 && at < firstAt) { firstAt = at; first = k; } });
+      names.forEach(([n, k]) => { t = t.split(n).join(`\u0000${k}\u0001`); });
+      t = t.replace(/\u0000(\d+)\u0001/g, (_, k) => `<b style="color:${s.players[k].color}">${esc(s.players[k].name)}</b>`);
+      return `<div class="entry" ${first >= 0 ? `style="--pc:${s.players[first].color}"` : ''}>${t}</div>`;
+    }).join('');
     el.scrollTop = el.scrollHeight;
   }
+
 
   function renderActions(s) {
     // 操作区在游戏画面底部：轮到自己时是掷骰子按钮或带头像的对话框，别人的回合只显示一个小提示
