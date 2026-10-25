@@ -7,6 +7,7 @@ import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import * as CANNON from './vendor/cannon-es.js';
 import { buildCharacter } from './characters.js';
 import { buildDistricts } from './districts.js';
+import { makeBuilding, lotMaterials, emptyDecor, palmTree } from './buildings.js';
 
 const U = 2; // 相邻路口的间距
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
@@ -261,6 +262,12 @@ export function createBoard3D(container, E, opts = {}) {
   })();
   const inBlock = new Set(blocks.flatMap(b => b.cells.map(c => c[0] + ',' + c[1])));
   const districts = buildDistricts(scene, blocks, world, U);
+  // 某个位置属于哪种片区风格：看离哪个主题街区最近（buildDistricts 给每个街区标了 theme）
+  function styleAt(wx, wz) {
+    let best = 'cbd', bd = Infinity;
+    blocks.forEach(b => { const c = world(b.cx, b.cz), d = Math.hypot(c.x - wx, c.z - wz); if (b.theme && d < bd) { bd = d; best = b.theme; } });
+    return best;
+  }
 
   // 树：圆冠阔叶树和两层的松树，颜色略有变化
   const trunkMat = std('#8b5a2b'), leafMats = ['#3fae49', '#57c75e', '#2e8b57', '#6bcf63'].map(c => std(c, { flatShading: true }));
@@ -268,12 +275,21 @@ export function createBoard3D(container, E, opts = {}) {
   const trunkGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.6, 6), leafGeo = new THREE.IcosahedronGeometry(0.45, 0);
   const pineGeos = [new THREE.ConeGeometry(0.5, 0.8, 7), new THREE.ConeGeometry(0.36, 0.65, 7)];
   const onIsland = (x, z, pad = 1) => Math.abs(x) < ISLE_W - pad && Math.abs(z) < ISLE_D - pad;
-  function tree(x, z, s = 1) {
+  // kind：'pine' 松树、'round' 阔叶树、'palm' 椰子树；不传就随机松树或阔叶树
+  function tree(x, z, s = 1, kind) {
     const g = new THREE.Group();
+    if (kind === 'palm') {
+      g.add(palmTree(1.1));
+      g.rotation.y = rng() * Math.PI * 2;
+      g.position.set(x, 0, z);
+      g.scale.setScalar(s);
+      scene.add(g);
+      return g;
+    }
     const t = new THREE.Mesh(trunkGeo, trunkMat);
     t.position.y = 0.3;
     g.add(t);
-    if (rng() < 0.35) {
+    if (kind === 'pine' || (!kind && rng() < 0.35)) {
       const mat = pineMats[Math.floor(rng() * pineMats.length)];
       pineGeos.forEach((geo, k) => { const c = new THREE.Mesh(geo, mat); c.position.y = 0.85 + k * 0.45; g.add(c); });
     } else {
@@ -289,6 +305,9 @@ export function createBoard3D(container, E, opts = {}) {
     scene.add(g);
     return g;
   }
+  // 按所在片区种不同的树：古城种松树，海滨种椰子树，金融区和游乐园种阔叶树
+  const TREE_KIND = { old: 'pine', beach: 'palm', cbd: 'round', fun: 'round' };
+  const themedTree = (x, z, s) => tree(x, z, s, TREE_KIND[styleAt(x, z)]);
   // 花丛：一小撮彩色小球
   const flowerGeo = new THREE.IcosahedronGeometry(0.09, 0);
   const flowerMats = ['#ff7aa2', '#ffd43b', '#ffffff', '#c084fc', '#ff8a4c'].map(c => std(c));
@@ -320,17 +339,17 @@ export function createBoard3D(container, E, opts = {}) {
           scene.add(b);
         }
         if (rng() < 0.3) flowers(p.x + (rng() - 0.5) * U * 0.5, p.z + (rng() - 0.5) * U * 0.5);
-        if (inside && !nearRoad(x, z)) tree(p.x, p.z, 0.8);
+        if (inside && !nearRoad(x, z)) themedTree(p.x, p.z, 0.8);
         continue;
       }
       // 镜头一侧（南边）只种花和矮树，免得挡住马路
-      if (z >= MAP_H) { if (rng() < 0.4) flowers(p.x, p.z); else if (rng() < 0.3) tree(p.x, p.z, 0.6); continue; }
+      if (z >= MAP_H) { if (rng() < 0.4) flowers(p.x, p.z); else if (rng() < 0.3) themedTree(p.x, p.z, 0.6); continue; }
       // 岛边一圈种得密一些，像树林
       const edge = x < -1 || x > MAP_W || z < -1;
       const n = edge && rng() < 0.75 ? 2 : 1;
       for (let k = 0; k < n; k++) {
         const tx = p.x + (rng() - 0.5) * U * 0.9, tz = p.z + (rng() - 0.5) * U * 0.9;
-        if (onIsland(tx, tz, 0.6)) tree(tx, tz, 0.75 + rng() * 0.55);
+        if (onIsland(tx, tz, 0.6)) themedTree(tx, tz, 0.75 + rng() * 0.55);
       }
     }
   }
@@ -452,46 +471,21 @@ export function createBoard3D(container, E, opts = {}) {
   }
 
   // ---------- 地块与楼房 ----------
-  const winTex = (() => {
-    const { ctx, tex } = makeCanvas(64, 64);
-    ctx.fillStyle = '#fbf8f1';
-    ctx.fillRect(0, 0, 64, 64);
-    ctx.fillStyle = '#7cc4f2';
-    for (let y = 6; y < 64; y += 20) for (let x = 6; x < 64; x += 20) ctx.fillRect(x, y, 12, 12);
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-  })();
-  const glassTex = (() => {
-    const { ctx, tex } = makeCanvas(64, 64);
-    ctx.fillStyle = '#8fd0ff';
-    ctx.fillRect(0, 0, 64, 64);
-    ctx.fillStyle = '#d9f1ff';
-    for (let y = 0; y < 64; y += 16) ctx.fillRect(0, y, 64, 3);
-    for (let x = 0; x < 64; x += 16) ctx.fillRect(x, 0, 2, 64);
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-  })();
-  function texMat(base, rx, ry) {
-    const t = base.clone();
-    t.needsUpdate = true;
-    t.repeat.set(rx, ry);
-    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.5 });
-  }
-
-  // 地块：石砌路沿围着一块草坪；买下后草坪换成地主颜色的铺装
-  const LOT_GRASS = '#a6dc7f';
-  const curbGeo = new THREE.BoxGeometry(U * 0.84, 0.1, U * 0.84), lawnGeo = new THREE.BoxGeometry(U * 0.72, 0.06, U * 0.72);
-  const curbMat = std('#e9e3d6');
+  // 地块：路沿 + 铺装，风格跟着最近的主题街区走（古城石板、金融区花岗岩、海滨沙地、游乐园彩砖）；
+  // 买下后铺装染上地主的颜色
+  const curbGeo = new THREE.BoxGeometry(U * 0.84, 0.1, U * 0.84), paveGeo = new THREE.BoxGeometry(U * 0.74, 0.06, U * 0.74);
   const lots = {};
   LANDS.forEach(i => {
     const [dx, dz] = lotDir[i], p = cellPos(i);
     const lc = new THREE.Vector3(p.x + dx * U, 0, p.z + dz * U);
-    const curb = new THREE.Mesh(curbGeo, curbMat);
+    const style = styleAt(lc.x, lc.z);
+    const mats = lotMaterials(style);
+    const curb = new THREE.Mesh(curbGeo, mats.curb);
     curb.position.set(lc.x, 0.05, lc.z);
     curb.receiveShadow = true;
     curb.userData.cell = i;
     scene.add(curb);
-    const plate = new THREE.Mesh(lawnGeo, std(LOT_GRASS));
+    const plate = new THREE.Mesh(paveGeo, mats.top);
     plate.position.set(lc.x, 0.11, lc.z);
     plate.receiveShadow = true;
     plate.userData.cell = i;
@@ -500,89 +494,9 @@ export function createBoard3D(container, E, opts = {}) {
     holder.position.set(lc.x, 0.14, lc.z);
     holder.rotation.y = Math.atan2(-dx, -dz); // 正面（+z）朝向马路
     scene.add(holder);
-    lots[i] = { holder, plate, center: lc, key: null, building: null };
+    lots[i] = { holder, plate, style, center: lc, key: null, building: null };
   });
 
-  // 各等级的建筑。局部坐标里 +z 是正面（朝马路），屋顶、阳台、雨棚、楼冠用地主的颜色
-  const darkMat = std('#36414f'), doorMat = std('#8b5a2b'), stoneMat = std('#d9d2c3'), metalMat = std('#cfd6dd', { metalness: 0.6, roughness: 0.35 });
-  function gable(w, h, d, mat) {
-    const shape = new THREE.Shape();
-    shape.moveTo(-w / 2, 0);
-    shape.lineTo(w / 2, 0);
-    shape.lineTo(0, h);
-    shape.closePath();
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
-    geo.translate(0, 0, -d / 2); // 三角形山墙朝向正面（马路），屋脊前后走向
-    return new THREE.Mesh(geo, mat);
-  }
-  function makeBuilding(level, color) {
-    const g = new THREE.Group();
-    const roof = std(color, { roughness: 0.55 });
-    const add = (mesh, x, y, z) => { mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh); return mesh; };
-    const box = (w, h, d, mat, x, y, z) => add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat), x, y + h / 2, z);
-    const windowsFront = (w, y, z, n) => { for (let k = 0; k < n; k++) box(0.16, 0.18, 0.02, darkMat, -w / 2 + (k + 0.5) * (w / n), y, z); };
-    let top = 0;
-    if (level === 0) {
-      // 小木屋
-      box(0.8, 0.5, 0.7, std('#d9a066'), 0, 0, 0);
-      add(gable(0.92, 0.42, 0.82, roof), 0, 0.5, 0);
-      box(0.2, 0.32, 0.02, doorMat, 0, 0, 0.36);
-      top = 0.92;
-    } else if (level === 1) {
-      // 平房：烟囱、窗户
-      box(1.15, 0.65, 0.9, std('#fbf8f1'), 0, 0, 0);
-      add(gable(1.3, 0.5, 1.02, roof), 0, 0.65, 0);
-      box(0.14, 0.4, 0.14, std('#b5651d'), 0.35, 0.8, -0.15);
-      box(0.22, 0.38, 0.02, doorMat, 0, 0, 0.46);
-      windowsFront(1.15, 0.28, 0.46, 3);
-      top = 1.15;
-    } else if (level === 2) {
-      // 洋房：两层、阳台
-      box(1.2, 1.3, 1.0, std('#fff3dc'), 0, 0, 0);
-      add(gable(1.38, 0.62, 1.14, roof), 0, 1.3, 0);
-      box(0.9, 0.06, 0.25, roof, 0, 0.68, 0.62);
-      box(0.9, 0.18, 0.03, std('#ffffff'), 0, 0.74, 0.74);
-      box(0.24, 0.42, 0.02, doorMat, 0, 0, 0.51);
-      windowsFront(1.2, 0.28, 0.51, 4);
-      windowsFront(1.2, 0.95, 0.51, 3);
-      top = 1.92;
-    } else if (level === 3) {
-      // 公寓：平顶、水塔、雨棚
-      box(1.2, 2.2, 1.1, texMat(winTex, 2, 4), 0, 0, 0);
-      box(1.3, 0.14, 1.2, roof, 0, 2.2, 0);
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.35, 12), metalMat), -0.3, 2.52, -0.2);
-      box(0.6, 0.06, 0.3, roof, 0, 0.5, 0.68);
-      box(0.3, 0.45, 0.02, darkMat, 0, 0, 0.56);
-      top = 2.75;
-    } else if (level === 4) {
-      // 大厦：裙楼、玻璃塔楼、楼冠、天线
-      box(1.45, 0.55, 1.35, roof, 0, 0, 0);
-      box(1.15, 2.9, 1.1, texMat(glassTex, 2, 6), 0, 0.55, 0);
-      box(1.25, 0.3, 1.2, roof, 0, 3.45, 0);
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6), metalMat), 0.3, 4.15, 0);
-      box(0.5, 0.35, 0.02, darkMat, 0, 0, 0.68);
-      top = 3.75;
-    } else if (level === 5) {
-      // 摩天楼：三段收分、尖顶、航空灯
-      box(1.5, 0.8, 1.45, stoneMat, 0, 0, 0);
-      box(1.5, 0.12, 1.45, roof, 0, 0.8, 0);
-      box(1.15, 2.6, 1.1, texMat(glassTex, 2, 6), 0, 0.92, 0);
-      box(1.22, 0.14, 1.17, roof, 0, 3.52, 0);
-      box(0.85, 1.7, 0.82, texMat(glassTex, 2, 4), 0, 3.66, 0);
-      const crown = add(new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.9, 4), roof), 0, 5.81, 0);
-      crown.rotation.y = Math.PI / 4;
-      add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.06, 1.0, 6), metalMat), 0, 6.75, 0);
-      const light = add(new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff3b3b' })), 0, 7.28, 0);
-      light.userData.blink = true;
-      box(0.6, 0.5, 0.02, darkMat, 0, 0, 0.73);
-      top = 6.3;
-    }
-    // 小旗子
-    add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6), std('#666')), 0.62, 0.45, 0.62);
-    add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.03), roof), 0.88, 0.74, 0.62);
-    g.userData.top = top;
-    return g;
-  }
   // 待售牌：中性的木牌，所有空地共用一张贴图
   const saleMats = (() => {
     const { ctx, tex } = makeCanvas(128, 64);
@@ -626,11 +540,18 @@ export function createBoard3D(container, E, opts = {}) {
     lot.key = key;
     lot.prev = { level: ld.level, owner: ld.owner };
     lot.holder.clear();
-    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.35) : LOT_GRASS);
-    const b = owner ? makeBuilding(ld.level, owner.color) : saleSign();
+    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.45) : '#ffffff');
+    const b = owner ? makeBuilding(lot.style, ld.level, owner.color) : saleSign();
     lot.blink = null;
+    if (!owner) {
+      b.rotation.y = -lot.holder.rotation.y; // 待售牌始终朝向镜头一侧
+      // 空地后侧摆一个片区风格的小摆设
+      const d = emptyDecor(lot.style);
+      d.position.set(-0.45, 0, -0.45);
+      lot.holder.add(d);
+    }
+    lot.holder.traverse(o => { o.userData.cell = i; });
     b.traverse(o => { o.userData.cell = i; if (o.userData.blink) lot.blink = o; });
-    if (!owner) b.rotation.y = -lot.holder.rotation.y; // 待售牌始终朝向镜头一侧
     lot.holder.add(b);
     if (grew) {
       b.scale.set(1, 0.01, 1);
