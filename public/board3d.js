@@ -8,6 +8,7 @@ import * as CANNON from './vendor/cannon-es.js';
 import { buildCharacter } from './characters.js';
 import { buildDistricts } from './districts.js';
 import { makeBuilding, lotMaterials, emptyDecor, palmTree } from './buildings.js';
+import { buildSuburbs } from './suburbs.js';
 
 const U = 2; // 相邻路口的间距
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
@@ -130,8 +131,8 @@ export function createBoard3D(container, E, opts = {}) {
   const rng = (() => { let t = 12345; return () => { t = (t * 1103515245 + 12345) & 0x7fffffff; return t / 0x7fffffff; }; })();
 
   // ---------- 地面：城市建在一座圆角小岛上，四周是海 ----------
-  // 岛的半宽/半深：路网外侧留出地块和一圈绿化
-  const ISLE_W = (MAP_W - 1) * U / 2 + 6.5, ISLE_D = (MAP_H - 1) * U / 2 + 6.5;
+  // 岛的半宽/半深：路网外侧留出地块和一圈郊区（见 suburbs.js）
+  const ISLE_W = (MAP_W - 1) * U / 2 + 10, ISLE_D = (MAP_H - 1) * U / 2 + 10;
   function roundedSlab(hw, hd, r, depth, mats, y) {
     const sh = new THREE.Shape();
     sh.moveTo(-hw + r, -hd);
@@ -305,6 +306,8 @@ export function createBoard3D(container, E, opts = {}) {
     scene.add(g);
     return g;
   }
+  // 郊区景观：环岛路、机场、港口、农田……剩下的空地才种树
+  const suburbs = buildSuburbs(scene, { IW: ISLE_W, ID: ISLE_D, BW: (MAP_W - 1) * U / 2 + U * 1.6, BD: (MAP_H - 1) * U / 2 + U * 1.6, rng });
   // 按所在片区种不同的树：古城种松树，海滨种椰子树，金融区和游乐园种阔叶树
   const TREE_KIND = { old: 'pine', beach: 'palm', cbd: 'round', fun: 'round' };
   const themedTree = (x, z, s) => tree(x, z, s, TREE_KIND[styleAt(x, z)]);
@@ -322,14 +325,14 @@ export function createBoard3D(container, E, opts = {}) {
   // 路边只种矮灌木，离路远的地方才种树；镜头一侧（南边）留空，免得挡住视线
   const bushGeo = new THREE.IcosahedronGeometry(0.28, 0);
   const nearRoad = (x, z) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => occupied.has((x + dx) + ',' + (z + dz)));
-  for (let z = -4; z < MAP_H + 4; z++) {
-    for (let x = -4; x < MAP_W + 4; x++) {
+  for (let z = -6; z < MAP_H + 6; z++) {
+    for (let x = -6; x < MAP_W + 6; x++) {
       const key = x + ',' + z;
       if (occupied.has(key) || usedLots.has(key)) continue;
       const inside = x >= 0 && x < MAP_W && z >= 0 && z < MAP_H;
       if (inBlock.has(key)) continue; // 街区里摆的是主题景观
       const p = world(x, z);
-      if (!onIsland(p.x, p.z, 0.8)) continue;
+      if (!onIsland(p.x, p.z, 0.8) || suburbs.blocked(p.x, p.z)) continue;
       if (inside || nearRoad(x, z)) {
         if (rng() < 0.55) {
           const b = new THREE.Mesh(bushGeo, leafMats[Math.floor(rng() * leafMats.length)]);
@@ -349,7 +352,7 @@ export function createBoard3D(container, E, opts = {}) {
       const n = edge && rng() < 0.75 ? 2 : 1;
       for (let k = 0; k < n; k++) {
         const tx = p.x + (rng() - 0.5) * U * 0.9, tz = p.z + (rng() - 0.5) * U * 0.9;
-        if (onIsland(tx, tz, 0.6)) themedTree(tx, tz, 0.75 + rng() * 0.55);
+        if (onIsland(tx, tz, 0.6) && !suburbs.blocked(tx, tz, 0.3)) themedTree(tx, tz, 0.75 + rng() * 0.55);
       }
     }
   }
@@ -637,7 +640,7 @@ export function createBoard3D(container, E, opts = {}) {
   camera.position.set(0, 15, 15);
   controls.target.set(0, 0, 0);
   // 竖屏（手机）时视野窄，镜头要拉远一些
-  const viewDist = mode => (mode === 'follow' ? 19 : 44) * Math.max(1, 1.25 / Math.max(camera.aspect, 0.3));
+  const viewDist = mode => (mode === 'follow' ? 19 : 50) * Math.max(1, 1.25 / Math.max(camera.aspect, 0.3));
   let wantDist = null;
   // smooth=true 时镜头平滑推拉（开场从全景俯冲到玩家身上）
   function setView(mode, smooth) {
@@ -824,6 +827,7 @@ export function createBoard3D(container, E, opts = {}) {
       else t.glow.material.opacity = 0;
     });
     waterTex.offset.set(clock.t * 0.004, clock.t * 0.002);
+    try { suburbs.tick(clock.t, dt); } catch (e) { /* 装饰动画出错不影响游戏 */ }
     try { districts.tick(clock.t, dt); } catch (e) { /* 装饰动画出错不影响游戏 */ }
     renderer.render(scene, camera);
   }
