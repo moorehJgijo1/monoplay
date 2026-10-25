@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
+import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import * as CANNON from './vendor/cannon-es.js';
 import { buildCharacter } from './characters.js';
 import { buildDistricts } from './districts.js';
@@ -91,8 +92,18 @@ export function createBoard3D(container, E, opts = {}) {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#aee0ff');
-  scene.fog = new THREE.Fog('#aee0ff', 70, 150);
+  // 天空：上深下浅的渐变，远处和海面雾色融在一起
+  scene.background = (() => {
+    const { ctx, tex } = makeCanvas(4, 256);
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0, '#5fb4f2');
+    grad.addColorStop(0.65, '#a9dcfb');
+    grad.addColorStop(1, '#d9f1ff');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 4, 256);
+    return tex;
+  })();
+  scene.fog = new THREE.Fog('#bfe6fb', 70, 160);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -117,29 +128,86 @@ export function createBoard3D(container, E, opts = {}) {
   const center = new THREE.Vector3(0, 0, 0);
   const rng = (() => { let t = 12345; return () => { t = (t * 1103515245 + 12345) & 0x7fffffff; return t / 0x7fffffff; }; })();
 
-  // ---------- 地面、街区装饰 ----------
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_W * U + 70, MAP_H * U + 70), std('#8fd16f'));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  // ---------- 地面：城市建在一座圆角小岛上，四周是海 ----------
+  // 岛的半宽/半深：路网外侧留出地块和一圈绿化
+  const ISLE_W = (MAP_W - 1) * U / 2 + 6.5, ISLE_D = (MAP_H - 1) * U / 2 + 6.5;
+  function roundedSlab(hw, hd, r, depth, mats, y) {
+    const sh = new THREE.Shape();
+    sh.moveTo(-hw + r, -hd);
+    sh.lineTo(hw - r, -hd); sh.quadraticCurveTo(hw, -hd, hw, -hd + r);
+    sh.lineTo(hw, hd - r); sh.quadraticCurveTo(hw, hd, hw - r, hd);
+    sh.lineTo(-hw + r, hd); sh.quadraticCurveTo(-hw, hd, -hw, hd - r);
+    sh.lineTo(-hw, -hd + r); sh.quadraticCurveTo(-hw, -hd, -hw + r, -hd);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: 0.35, bevelThickness: 0.25, bevelSegments: 2, curveSegments: 10 });
+    geo.rotateX(-Math.PI / 2); // 形状躺平，挤出方向朝上
+    const m = new THREE.Mesh(geo, mats);
+    m.position.y = y - depth - 0.25;
+    m.receiveShadow = true;
+    scene.add(m);
+    return m;
+  }
+  const grassTex = (() => {
+    const { ctx, tex } = makeCanvas(128, 128);
+    ctx.fillStyle = '#8ccf68';
+    ctx.fillRect(0, 0, 128, 128);
+    for (let k = 0; k < 900; k++) {
+      ctx.fillStyle = ['#82c75f', '#97d873', '#7fbf5c', '#a2dc7e'][k % 4];
+      ctx.fillRect(Math.random() * 128, Math.random() * 128, 2 + Math.random() * 3, 2 + Math.random() * 3);
+    }
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(ISLE_W / 3, ISLE_D / 3);
+    return tex;
+  })();
+  // ExtrudeGeometry 的材质：[顶/底面, 侧面]
+  roundedSlab(ISLE_W, ISLE_D, 5, 1.2, [new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 }), std('#b98a55', { flatShading: true })], 0);
+  roundedSlab(ISLE_W + 1.6, ISLE_D + 1.6, 6.5, 0.6, [std('#f1dca6', { roughness: 1 }), std('#e2c68a')], -0.55); // 沙滩
+  // 海面：带波纹的贴图，主循环里慢慢平移
+  const waterTex = (() => {
+    const { ctx, tex } = makeCanvas(256, 256);
+    ctx.fillStyle = '#3fb6dd';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = 'rgba(255,255,255,.35)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 40; k++) {
+      const x = Math.random() * 256, y = Math.random() * 256, w = 14 + Math.random() * 22;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + w / 2, y - 6, x + w, y);
+      ctx.stroke();
+    }
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(30, 30);
+    return tex;
+  })();
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(420, 420), new THREE.MeshStandardMaterial({ map: waterTex, roughness: 0.3, metalness: 0.1 }));
+  sea.rotation.x = -Math.PI / 2;
+  sea.position.y = -0.75;
+  scene.add(sea);
 
-  // 道路：相邻路口之间铺沥青
-  const roadMat = std('#5f6b78');
-  const lineMat = std('#f5f1e6');
+  // ---------- 道路：人行道 + 沥青路面 + 车道虚线，合并成少量网格 ----------
+  const RH = U * 0.5, SW = U * 0.57; // 路面、人行道的半宽
+  const roadGeos = [], walkGeos = [], dashGeos = [];
+  const slab = (list, w, h, d, x, y, z) => { const geo = new THREE.BoxGeometry(w, h, d); geo.translate(x, y + h / 2, z); list.push(geo); };
   for (let a = 0; a < BOARD.length; a++) {
+    const pa = cellPos(a);
+    slab(walkGeos, SW * 2, 0.12, SW * 2, pa.x, 0, pa.z);
+    slab(roadGeos, RH * 2, 0.13, RH * 2, pa.x, 0, pa.z);
     for (const b of ADJ[a]) {
       if (b < a) continue;
-      const pa = cellPos(a), pb = cellPos(b), mid = pa.clone().add(pb).multiplyScalar(0.5);
+      const pb = cellPos(b), mid = pa.clone().add(pb).multiplyScalar(0.5);
       const horiz = BOARD[a].z === BOARD[b].z;
-      const road = new THREE.Mesh(new THREE.BoxGeometry(horiz ? U : U * 0.72, 0.1, horiz ? U * 0.72 : U), roadMat);
-      road.position.set(mid.x, 0.05, mid.z);
-      road.receiveShadow = true;
-      scene.add(road);
-      const line = new THREE.Mesh(new THREE.BoxGeometry(horiz ? U * 0.3 : 0.06, 0.02, horiz ? 0.06 : U * 0.3), lineMat);
-      line.position.set(mid.x, 0.11, mid.z);
-      scene.add(line);
+      slab(walkGeos, horiz ? U : SW * 2, 0.12, horiz ? SW * 2 : U, mid.x, 0, mid.z);
+      slab(roadGeos, horiz ? U : RH * 2, 0.13, horiz ? RH * 2 : U, mid.x, 0, mid.z);
+      // 两个格子之间露出的一小段路面上画车道虚线
+      slab(dashGeos, horiz ? 0.22 : 0.07, 0.01, horiz ? 0.07 : 0.22, mid.x, 0.13, mid.z);
     }
   }
+  [[walkGeos, std('#e4ddcf')], [roadGeos, std('#4d5866', { roughness: 0.9 })], [dashGeos, std('#fff6d8')]].forEach(([geos, mat]) => {
+    const m = new THREE.Mesh(mergeGeometries(geos), mat);
+    m.receiveShadow = true;
+    scene.add(m);
+  });
 
   // 地产地块的朝向：朝向路网外侧或街区内部的空地，且不和别的地块重叠
   const occupied = new Set(BOARD.map(c => c.x + ',' + c.z));
@@ -194,31 +262,55 @@ export function createBoard3D(container, E, opts = {}) {
   const inBlock = new Set(blocks.flatMap(b => b.cells.map(c => c[0] + ',' + c[1])));
   const districts = buildDistricts(scene, blocks, world, U);
 
-  // 树
+  // 树：圆冠阔叶树和两层的松树，颜色略有变化
   const trunkMat = std('#8b5a2b'), leafMats = ['#3fae49', '#57c75e', '#2e8b57', '#6bcf63'].map(c => std(c, { flatShading: true }));
+  const pineMats = ['#2f8f5b', '#3a9e66', '#277a4e'].map(c => std(c, { flatShading: true }));
   const trunkGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.6, 6), leafGeo = new THREE.IcosahedronGeometry(0.45, 0);
+  const pineGeos = [new THREE.ConeGeometry(0.5, 0.8, 7), new THREE.ConeGeometry(0.36, 0.65, 7)];
+  const onIsland = (x, z, pad = 1) => Math.abs(x) < ISLE_W - pad && Math.abs(z) < ISLE_D - pad;
   function tree(x, z, s = 1) {
     const g = new THREE.Group();
     const t = new THREE.Mesh(trunkGeo, trunkMat);
     t.position.y = 0.3;
-    const l = new THREE.Mesh(leafGeo, leafMats[Math.floor(rng() * leafMats.length)]);
-    l.position.y = 0.85;
-    l.scale.set(1, 1.25, 1);
-    [t, l].forEach(m => { m.castShadow = true; g.add(m); });
+    g.add(t);
+    if (rng() < 0.35) {
+      const mat = pineMats[Math.floor(rng() * pineMats.length)];
+      pineGeos.forEach((geo, k) => { const c = new THREE.Mesh(geo, mat); c.position.y = 0.85 + k * 0.45; g.add(c); });
+    } else {
+      const l = new THREE.Mesh(leafGeo, leafMats[Math.floor(rng() * leafMats.length)]);
+      l.position.y = 0.85;
+      l.scale.set(1, 1.25, 1);
+      l.rotation.y = rng() * Math.PI;
+      g.add(l);
+    }
+    g.traverse(m => { m.castShadow = true; });
     g.position.set(x, 0, z);
     g.scale.setScalar(s);
     scene.add(g);
+    return g;
+  }
+  // 花丛：一小撮彩色小球
+  const flowerGeo = new THREE.IcosahedronGeometry(0.09, 0);
+  const flowerMats = ['#ff7aa2', '#ffd43b', '#ffffff', '#c084fc', '#ff8a4c'].map(c => std(c));
+  function flowers(x, z) {
+    const mat = flowerMats[Math.floor(rng() * flowerMats.length)];
+    for (let k = 0; k < 5; k++) {
+      const f = new THREE.Mesh(flowerGeo, mat);
+      f.position.set(x + (rng() - 0.5) * 0.7, 0.08, z + (rng() - 0.5) * 0.7);
+      scene.add(f);
+    }
   }
   // 路边只种矮灌木，离路远的地方才种树；镜头一侧（南边）留空，免得挡住视线
   const bushGeo = new THREE.IcosahedronGeometry(0.28, 0);
   const nearRoad = (x, z) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => occupied.has((x + dx) + ',' + (z + dz)));
-  for (let z = -5; z < MAP_H + 5; z++) {
-    for (let x = -5; x < MAP_W + 5; x++) {
+  for (let z = -4; z < MAP_H + 4; z++) {
+    for (let x = -4; x < MAP_W + 4; x++) {
       const key = x + ',' + z;
       if (occupied.has(key) || usedLots.has(key)) continue;
       const inside = x >= 0 && x < MAP_W && z >= 0 && z < MAP_H;
       if (inBlock.has(key)) continue; // 街区里摆的是主题景观
       const p = world(x, z);
+      if (!onIsland(p.x, p.z, 0.8)) continue;
       if (inside || nearRoad(x, z)) {
         if (rng() < 0.55) {
           const b = new THREE.Mesh(bushGeo, leafMats[Math.floor(rng() * leafMats.length)]);
@@ -227,22 +319,38 @@ export function createBoard3D(container, E, opts = {}) {
           b.castShadow = true;
           scene.add(b);
         }
+        if (rng() < 0.3) flowers(p.x + (rng() - 0.5) * U * 0.5, p.z + (rng() - 0.5) * U * 0.5);
         if (inside && !nearRoad(x, z)) tree(p.x, p.z, 0.8);
         continue;
       }
-      if (z >= MAP_H && z < MAP_H + 3) continue;
-      if (Math.abs(x - MAP_W / 2) + Math.abs(z - MAP_H / 2) < 4) continue;
-      if (rng() < 0.55) tree(p.x + (rng() - 0.5) * U * 0.7, p.z + (rng() - 0.5) * U * 0.7, 0.8 + rng() * 0.5);
+      // 镜头一侧（南边）只种花和矮树，免得挡住马路
+      if (z >= MAP_H) { if (rng() < 0.4) flowers(p.x, p.z); else if (rng() < 0.3) tree(p.x, p.z, 0.6); continue; }
+      // 岛边一圈种得密一些，像树林
+      const edge = x < -1 || x > MAP_W || z < -1;
+      const n = edge && rng() < 0.75 ? 2 : 1;
+      for (let k = 0; k < n; k++) {
+        const tx = p.x + (rng() - 0.5) * U * 0.9, tz = p.z + (rng() - 0.5) * U * 0.9;
+        if (onIsland(tx, tz, 0.6)) tree(tx, tz, 0.75 + rng() * 0.55);
+      }
     }
   }
-  // 远处的城市背景
-  const farMats = ['#c9d6e3', '#b8c6d9', '#d8e0ea', '#aebfd4'].map(c => std(c));
-  for (let k = 0; k < 70; k++) {
-    const ang = rng() * Math.PI * 2, r = 34 + rng() * 22;
-    const h = 2 + rng() * 9;
-    const b = new THREE.Mesh(new THREE.BoxGeometry(2 + rng() * 2, h, 2 + rng() * 2), farMats[k % farMats.length]);
-    b.position.set(Math.cos(ang) * r * 1.2, h / 2, Math.sin(ang) * r);
-    scene.add(b);
+  // 远处海面上的几座小岛
+  const isleTop = std('#8ccf68'), isleSand = std('#f1dca6');
+  for (let k = 0; k < 9; k++) {
+    const ang = (k / 9) * Math.PI * 2 + rng() * 0.4, r = 58 + rng() * 30;
+    const x = Math.cos(ang) * r * 1.3, z = Math.sin(ang) * r;
+    const s = 2.5 + rng() * 4;
+    const sand = new THREE.Mesh(new THREE.CylinderGeometry(s * 1.15, s * 1.3, 0.5, 18), isleSand);
+    sand.position.set(x, -0.6, z);
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(s, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), isleTop);
+    hill.scale.y = 0.35 + rng() * 0.5;
+    hill.position.set(x, -0.4, z);
+    scene.add(sand, hill);
+    // 树长在山坡上：按离岛心的距离算出坡面高度
+    for (let t = 0; t < 4; t++) {
+      const dx = (rng() - 0.5) * s, dz = (rng() - 0.5) * s, d = Math.min(1, Math.hypot(dx, dz) / s);
+      tree(x + dx, z + dz, 1.2 + rng()).position.y = -0.5 + s * hill.scale.y * Math.sqrt(1 - d * d);
+    }
   }
   // 中央公园的喷泉
   const park = BOARD.findIndex(c => c.type === 'park');
@@ -256,18 +364,21 @@ export function createBoard3D(container, E, opts = {}) {
   }
 
   // ---------- 路口格子 ----------
-  const tileGeo = new THREE.BoxGeometry(U * 0.9, 0.3, U * 0.9);
-  const tileSide = std('#e9e2d0');
+  // 格子是嵌在路面上的一块厚板，顶面贴图；四周露出一圈路面
+  const TILE = U * 0.82;
+  const tileGeo = new THREE.BoxGeometry(TILE, 0.17, TILE);
+  const tileSide = std('#d8cdb4');
   const tiles = BOARD.map((c, i) => {
     const top = makeCanvas(256, 256);
-    const mesh = new THREE.Mesh(tileGeo, [tileSide, tileSide, new THREE.MeshStandardMaterial({ map: top.tex, roughness: 0.8 }), tileSide, tileSide, tileSide]);
+    const mesh = new THREE.Mesh(tileGeo, [tileSide, tileSide, new THREE.MeshStandardMaterial({ map: top.tex, roughness: 0.6 }), tileSide, tileSide, tileSide]);
     const p = cellPos(i);
-    mesh.position.set(p.x, 0.15, p.z);
+    mesh.position.set(p.x, 0.215, p.z);
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.cell = i;
     scene.add(mesh);
     // 高亮层（可选目标、走过的轨迹）
-    const glow = new THREE.Mesh(new THREE.PlaneGeometry(U * 0.94, U * 0.94), new THREE.MeshBasicMaterial({ color: '#ff2d55', transparent: true, opacity: 0, depthWrite: false }));
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(U * 0.9, U * 0.9), new THREE.MeshBasicMaterial({ color: '#ff2d55', transparent: true, opacity: 0, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2;
     glow.position.set(p.x, 0.32, p.z);
     glow.userData.cell = i;
@@ -288,47 +399,55 @@ export function createBoard3D(container, E, opts = {}) {
     g.clearRect(0, 0, 256, 256);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
+    // 格子是一张圆角卡片，卡片外的一圈是格子侧面的颜色
+    g.fillStyle = '#d8cdb4';
+    g.fillRect(0, 0, 256, 256);
+    const card = (fill, x = 8, y = 8, w = 240, h = 240, r = 28) => { roundRect(g, x, y, w, h, r); g.fillStyle = fill; g.fill(); };
     if (c.type === 'land') {
       const ld = s.lands[i], owner = ld.owner !== null ? s.players[ld.owner] : null;
-      // 无主的地是中性的石板色；只有被买下后才染成地主的颜色（颜色只用来区分玩家）
       const grp = GROUPS[c.group];
-      // 被买下的格子整块涂满地主的颜色（白字），远看也能一眼分清是谁的
-      g.fillStyle = owner ? owner.color : '#f1ece0';
-      g.fillRect(0, 0, 256, 256);
-      g.fillStyle = owner ? 'rgba(0,0,0,.28)' : '#5b6472';
-      g.fillRect(0, 0, 256, 78);
+      // 空地：白卡片，顶部是片区色的标题栏（像传统大富翁的地契）
+      // 被买下：整张卡片涂满地主的颜色（白字），远看也能一眼分清是谁的
+      card(owner ? owner.color : '#fffaf0');
+      g.save();
+      roundRect(g, 8, 8, 240, 240, 28);
+      g.clip();
+      g.fillStyle = owner ? 'rgba(0,0,0,.25)' : grp.color;
+      g.fillRect(0, 0, 256, 84);
+      g.restore();
       g.fillStyle = '#fff';
-      g.font = `bold ${c.name.length > 2 ? 46 : 54}px ${FONT}`;
-      g.fillText(c.name, 128, 42);
-      g.fillStyle = owner ? '#ffffff' : '#6b5a45';
-      g.font = `bold 34px ${FONT}`;
+      g.font = `bold ${c.name.length > 2 ? 48 : 56}px ${FONT}`;
+      g.fillText(c.name, 128, 48);
+      g.fillStyle = owner ? 'rgba(255,255,255,.85)' : '#8a7a63';
+      g.font = `bold 30px ${FONT}`;
       g.fillText(`${grp.name} · ${owner ? '过路费' : '地价'}`, 128, 118);
-      g.font = `bold 50px ${FONT}`;
+      g.fillStyle = owner ? '#ffffff' : '#3b2f22';
+      g.font = `bold 54px ${FONT}`;
       const v = owner ? E.rentFor(s, i) : c.price;
-      g.fillText(v >= 10000 ? '¥' + (v / 10000).toFixed(1).replace(/\.0$/, '') + '万' : '¥' + v.toLocaleString('en-US'), 128, 170);
+      g.fillText(v >= 10000 ? '¥' + (v / 10000).toFixed(1).replace(/\.0$/, '') + '万' : '¥' + v.toLocaleString('en-US'), 128, 168);
       if (owner) {
-        g.font = `40px ${FONT}`;
+        g.font = `bold 38px ${FONT}`;
         g.fillStyle = '#fff3a0';
-        g.fillText('★'.repeat(ld.level) + '☆'.repeat(5 - ld.level), 128, 222);
+        g.fillText('★'.repeat(ld.level) + '☆'.repeat(5 - ld.level), 128, 216);
+      } else {
+        g.fillStyle = grp.color;
+        roundRect(g, 88, 206, 80, 12, 6);
+        g.fill();
       }
     } else {
-      // 特殊格子只带一点淡淡的底色，主要靠图标区分，避免和玩家颜色混淆
+      // 特殊格子：淡彩色卡片 + 大图标，靠图标区分，避免和玩家颜色混淆
       const [bg, icon] = TYPE_STYLE[c.type] || ['#eee', '❔'];
-      g.fillStyle = '#f7f3ea';
-      g.fillRect(0, 0, 256, 256);
-      g.globalAlpha = 0.28;
-      g.fillStyle = bg;
-      g.fillRect(0, 0, 256, 256);
+      card('#fffaf0');
+      g.globalAlpha = 0.35;
+      card(bg);
       g.globalAlpha = 1;
-      g.font = `110px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${FONT}`;
-      g.fillText(icon, 128, 108);
-      g.fillStyle = '#2d1e10';
+      card('rgba(255,255,255,.55)', 30, 26, 196, 150, 75);
+      g.font = `104px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${FONT}`;
+      g.fillText(icon, 128, 104);
+      g.fillStyle = '#3b2f22';
       g.font = `bold ${c.name.length > 3 ? 40 : 48}px ${FONT}`;
       g.fillText(c.name, 128, 212);
     }
-    g.strokeStyle = c.type === 'land' && s.lands[i].owner !== null ? 'rgba(255,255,255,.85)' : 'rgba(0,0,0,.25)';
-    g.lineWidth = 8;
-    g.strokeRect(4, 4, 248, 248);
     t.top.tex.needsUpdate = true;
   }
 
@@ -359,12 +478,21 @@ export function createBoard3D(container, E, opts = {}) {
     return new THREE.MeshStandardMaterial({ map: t, roughness: 0.5 });
   }
 
+  // 地块：石砌路沿围着一块草坪；买下后草坪换成地主颜色的铺装
+  const LOT_GRASS = '#a6dc7f';
+  const curbGeo = new THREE.BoxGeometry(U * 0.84, 0.1, U * 0.84), lawnGeo = new THREE.BoxGeometry(U * 0.72, 0.06, U * 0.72);
+  const curbMat = std('#e9e3d6');
   const lots = {};
   LANDS.forEach(i => {
     const [dx, dz] = lotDir[i], p = cellPos(i);
-    const lc = new THREE.Vector3(p.x + dx * U * 0.95, 0, p.z + dz * U * 0.95);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(U * 0.86, 0.14, U * 0.86), std('#d9d1bf'));
-    plate.position.set(lc.x, 0.07, lc.z);
+    const lc = new THREE.Vector3(p.x + dx * U, 0, p.z + dz * U);
+    const curb = new THREE.Mesh(curbGeo, curbMat);
+    curb.position.set(lc.x, 0.05, lc.z);
+    curb.receiveShadow = true;
+    curb.userData.cell = i;
+    scene.add(curb);
+    const plate = new THREE.Mesh(lawnGeo, std(LOT_GRASS));
+    plate.position.set(lc.x, 0.11, lc.z);
     plate.receiveShadow = true;
     plate.userData.cell = i;
     scene.add(plate);
@@ -479,6 +607,7 @@ export function createBoard3D(container, E, opts = {}) {
     const board = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.38, 0.04), saleMats);
     board.position.y = 0.85;
     [post, board].forEach(m => { m.castShadow = true; g.add(m); });
+    g.scale.setScalar(0.8);
     return g;
   }
 
@@ -497,7 +626,7 @@ export function createBoard3D(container, E, opts = {}) {
     lot.key = key;
     lot.prev = { level: ld.level, owner: ld.owner };
     lot.holder.clear();
-    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.25) : '#d9d1bf');
+    lot.plate.material.color.set(owner ? new THREE.Color(owner.color).lerp(new THREE.Color('#ffffff'), 0.35) : LOT_GRASS);
     const b = owner ? makeBuilding(ld.level, owner.color) : saleSign();
     lot.blink = null;
     b.traverse(o => { o.userData.cell = i; if (o.userData.blink) lot.blink = o; });
@@ -773,6 +902,7 @@ export function createBoard3D(container, E, opts = {}) {
       else if (t.trail > 0) { t.trail = Math.max(0, t.trail - dt * 0.8); t.glow.material.opacity = t.trail * 0.55; }
       else t.glow.material.opacity = 0;
     });
+    waterTex.offset.set(clock.t * 0.004, clock.t * 0.002);
     try { districts.tick(clock.t, dt); } catch (e) { /* 装饰动画出错不影响游戏 */ }
     renderer.render(scene, camera);
   }
