@@ -1,0 +1,27 @@
+# Unity 自动生成的目录
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.unityproj
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.vs/
+.idea/
+# 核心测试的编译输出
+/CoreTests~/bin/
+/CoreTests~/obj/
+
+# 但核心测试工程要提交
+!/CoreTests~/CoreTests.csproj

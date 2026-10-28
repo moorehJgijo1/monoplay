@@ -4,6 +4,8 @@
 
 零依赖，只需要 Node.js 18 及以上版本。
 
+> 🖥️ **Unity 电脑客户端**（开发中）在 [`unity/`](unity/README.md) 目录：用 Kenney 的 3D 素材、URP 渲染，规则和联机服务器和网页版是同一套。打开方法见 [unity/README.md](unity/README.md)。
+
 ## 快速开始
 
 ```bash
