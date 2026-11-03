@@ -333,3 +333,6 @@ export function buildChinese(k, level, ctx) {
   pagodaTop(k, y - 0.06, ctx, level === 5);
   return y + 0.7;
 }
+
+// 给街区景物（dist-*.js）复用的中式零件
+export { roofCN as cnRoof, dougong, pillar, pillarRing, gate, latticeWin, lantern, redRail, pine as cnPine, stairs, pagodaTop, C as CN, LATTICE };

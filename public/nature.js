@@ -214,16 +214,42 @@ function buildPalm(seed) {
   return { bark, foliage };
 }
 
+// ---------- 垂柳 ----------
+function buildWillow(seed) {
+  const rnd = prng(seed + 61);
+  const th = 0.9;
+  const bark = [trunk(th, 0.1, 0.05, seed, 0.12), branch(0, th * 0.8, 0, 0.3, th + 0.25, 0.1, 0.035), branch(0, th * 0.75, 0, -0.28, th + 0.2, -0.12, 0.03)];
+  const barkG = merged(bark.map(g => { if (g.index) g = g.toNonIndexed(); if (!g.attributes.color) paint(g, c => c.set('#6a4a2b')); g.deleteAttribute('uv'); return g; }));
+  const parts = [tr(lumpy(0.5, seed + 3, { amp: 0.2, sy: 0.55 }), 0.08, th + 0.3, 0)];
+  for (let i = 0; i < 4; i++) { const a = i * 1.6 + rnd(); parts.push(tr(lumpy(0.28, seed * 5 + i, { amp: 0.25, sy: 0.6 }), 0.08 + Math.cos(a) * 0.33, th + 0.22, Math.sin(a) * 0.33)); }
+  // 垂下的柳条：细长的锥，从树冠边缘一直垂到接近地面
+  for (let i = 0; i < 70; i++) {
+    const a = rnd() * Math.PI * 2, r0 = 0.2 + rnd() * 0.45, len = 0.45 + rnd() * 0.55, x = 0.08 + Math.cos(a) * r0, z = Math.sin(a) * r0;
+    const g = new THREE.CylinderGeometry(0.006, 0.014, len, 4, 3, true);
+    const p = g.attributes.position;
+    for (let j = 0; j < p.count; j++) p.setX(j, p.getX(j) + Math.sin((p.getY(j) + len / 2) * 7 + i) * 0.015 * ((p.getY(j) + len / 2) / len));
+    g.deleteAttribute('uv'); g.deleteAttribute('normal');
+    const m = mergeVertices(g, 1e-4);
+    parts.push(tr(m, x, th + 0.12 - len / 2 + (0.22 - r0 * 0.3), z));
+  }
+  const fg = merged(parts);
+  paint(fg, (c, x, y, z, ny) => {
+    const t = Math.min(1, Math.max(0, (y - 0.25) / 1.0));
+    c.set('#5f9a35').lerp(cl('#a8d86a'), t * 0.8 + (fbm(x * 6, y * 3, z * 6) - 0.5) * 0.5);
+  });
+  return { bark: barkG, foliage: fg };
+}
+
 // ---------- 缓存与实例化 ----------
 const cache = new Map();
 function variant(kind, i) {
   const key = kind + i;
-  if (!cache.has(key)) cache.set(key, kind === 'pine' ? buildPine(i) : kind === 'palm' ? buildPalm(i) : buildRound(i));
+  if (!cache.has(key)) cache.set(key, kind === 'pine' ? buildPine(i) : kind === 'palm' ? buildPalm(i) : kind === 'willow' ? buildWillow(i) : buildRound(i));
   return cache.get(key);
 }
 // kind：'round' | 'pine' | 'palm'；v：变体编号（任意整数，会取模）
 export function makeTree(kind = 'round', v = 0) {
-  const n = kind === 'pine' ? 3 : 4;
+  const n = kind === 'pine' ? 3 : kind === 'willow' ? 2 : 4;
   const d = variant(kind, ((v % n) + n) % n);
   const g = new THREE.Group();
   const b = new THREE.Mesh(d.bark, M.bark), f = new THREE.Mesh(d.foliage, kind === 'palm' ? M.leafTwo : M.leaf);
