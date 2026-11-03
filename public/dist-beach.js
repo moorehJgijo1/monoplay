@@ -1,5 +1,5 @@
 // 西南「海滨」街区的中央景观（8 × 6）：
-// 左半边是泻湖（栈桥、两艘绕圈的帆船）；右半边从后到前依次是灯塔、救生员瞭望塔、沙滩伞和躺椅。
+// 左半边是泻湖（栈桥、两艘绕圈的帆船）；高的放南侧（右前灯塔、棕榈），矮的放北侧（右后救生员瞭望塔）。
 // 用 modeling.js 的零件箱重建；帆船和灯塔光束是单独的动画网格。
 import * as THREE from 'three';
 import { mkit, mat, TEX, canvasTex } from './modeling.js';
@@ -136,7 +136,7 @@ export function buildBeach(g, W, D, amb) {
 
   // ═════ 右后：灯塔 ═════
   {
-    const hx = W / 2 - 0.9, hz = -D / 2 + 0.95;
+    const hx = W / 2 - 0.95, hz = D / 2 - 0.95;     // 高的放南侧
     const rock = makeRock(0.78, 2); rock.scale.set(0.9, 0.62, 0.9); rock.position.set(hx, 0.17, hz); g.add(rock);
     k.push(hx, 0.1, hz, 0);
     k.cyl(0.4, 0.42, 0.14, M.white, 0, 0, 0, 32);
@@ -163,8 +163,8 @@ export function buildBeach(g, W, D, amb) {
     const lampM = new THREE.MeshStandardMaterial({ color: '#fff6c2', emissive: '#ffd34d', emissiveIntensity: 1.1 });
     const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 16), lampM);
     lamp.position.set(hx, 0.1 + gy + 0.2, hz); g.add(lamp);
-    const beam = new THREE.Mesh(new THREE.ConeGeometry(0.4, 2.6, 20, 1, true), new THREE.MeshBasicMaterial({ color: '#fff3b0', transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide }));
-    beam.geometry.translate(0, -1.3, 0);
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(0.36, 1.7, 20, 1, true), new THREE.MeshBasicMaterial({ color: '#fff3b0', transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide }));
+    beam.geometry.translate(0, -0.85, 0);
     beam.rotation.z = Math.PI / 2;
     const pivot = new THREE.Group(); pivot.position.set(hx, 0.1 + gy + 0.2, hz); pivot.add(beam); g.add(pivot);
     amb.push((t, dt) => { pivot.rotation.y += dt * 1.2; });
@@ -172,7 +172,7 @@ export function buildBeach(g, W, D, amb) {
 
   // ═════ 右中：救生员瞭望塔 + 冲浪板架 ═════
   {
-    const lgx = lx + lw / 2 + 0.75, lgz = lz + 0.35;
+    const lgx = W / 2 - 1.3, lgz = -D / 2 + 1.25;   // 右后
     k.push(lgx, 0, lgz, -0.25);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.cyl(0.026, 0.032, 0.95, M.white, sx * 0.22, 0, sz * 0.22, 8);
     for (const sx of [-1, 1]) { k.box(0.02, 0.02, 0.62, M.white, sx * 0.22, 0.4, 0, 0, [0, 0, 0]); k.box(0.02, 0.02, 0.62, M.white, sx * 0.22, 0.4, 0, 0, [0, 0, 0]); }
@@ -192,7 +192,7 @@ export function buildBeach(g, W, D, amb) {
     k.torus(0.05, 0.016, M.red, -0.245, 1.05, 0.0, [0, Math.PI / 2, 0]);          // 救生圈
     k.pop();
     // 冲浪板架：三块板斜靠在架子上
-    k.push(lgx + 0.85, 0, lgz + 0.75, -0.3);
+    k.push(lgx - 0.1, 0, lgz + 0.95, -0.1);
     k.box(0.6, 0.03, 0.03, M.post, 0, 0.3, 0, 0); for (const s of [-1, 1]) k.box(0.03, 0.3, 0.03, M.post, s * 0.28, 0, 0, 0);
     ['#ff6b6b', '#4dabf7', '#ffd34d'].forEach((c, i) => {
       const board = new THREE.CapsuleGeometry(0.075, 0.55, 4, 12); board.scale(1, 1, 0.22);
@@ -202,15 +202,14 @@ export function buildBeach(g, W, D, amb) {
   }
 
   // ═════ 前排：沙滩伞、躺椅、棕榈 ═════
-  umbrella(k, W / 2 - 2.0, D / 2 - 0.7, '#ff6b6b', '#ffffff', '#ff6b6b');
-  lounger(k, W / 2 - 2.5, D / 2 - 0.6, 0.1, '#ffd34d');
+  umbrella(k, 1.5, 0.7, '#ff6b6b', '#ffffff', '#ff6b6b');
+  lounger(k, 0.95, 0.8, 0.1, '#ffd34d');
   umbrella(k, -W / 2 + 1.4, D / 2 - 0.6, '#2f80ed', '#ffffff', '#2f80ed');
   lounger(k, -W / 2 + 0.85, D / 2 - 0.9, -0.2, '#4dabf7');
   const palm1 = makePalm(1); palm1.position.set(-W / 2 + 0.5, 0, D / 2 - 0.5); palm1.rotation.y = -0.8; palm1.scale.setScalar(1.2); g.add(palm1);
-  const palm2 = makePalm(2); palm2.position.set(W / 2 - 0.55, 0, D / 2 - 1.2); palm2.rotation.y = 1.4; palm2.scale.setScalar(1.1); g.add(palm2);
   // 一座小沙堡
   {
-    k.push(0.9, 0, D / 2 - 0.5, 0);
+    k.push(-0.9, 0, D / 2 - 0.9, 0);
     k.cyl(0.2, 0.24, 0.16, M.sandD, 0, 0, 0, 14);
     for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; k.cyl(0.05, 0.06, 0.12, M.sandD, Math.cos(a) * 0.2, 0.1, Math.sin(a) * 0.2, 8); }
     k.cone(0.07, 0.14, M.sandD, 0, 0.16, 0, 10);

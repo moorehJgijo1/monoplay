@@ -1,5 +1,6 @@
 // 东南「游乐园」街区的中央景观（8 × 6）：
-// 后排：过山车（左）、摩天轮（右）；前排：旋转木马（左）、马戏帐篷（右）；大门居中，气球在右侧。
+// 高的放南侧（镜头在南边，高物体往上盖的是自己的空地）：左前旋转木马、右前摩天轮、大门居中；
+// 矮的放北侧：左后过山车、右后马戏帐篷。
 // 用 modeling.js 的零件箱重建；摩天轮、旋转木马、过山车、气球保留原来的动画。
 import * as THREE from 'three';
 import { mkit, mat, TEX, canvasTex } from './modeling.js';
@@ -54,7 +55,7 @@ export function buildFunPark(g, W, D, amb) {
   // ═════ 后右：摩天轮 ═════
   {
     const fw = new THREE.Group();
-    fw.position.set(W / 2 - 1.5, 0, -D / 2 + 1.2);
+    fw.position.set(W / 2 - 1.5, 0, D / 2 - 1.5);          // 右前：摩天轮最高，放南侧
     fw.rotation.y = -0.35;
     g.add(fw);
     const R = 1.35, H = 1.75, fk = mkit(fw);
@@ -107,7 +108,7 @@ export function buildFunPark(g, W, D, amb) {
   // ═════ 前左：旋转木马 ═════
   {
     const cr = new THREE.Group();
-    cr.position.set(-W / 2 + 1.7, 0, 1.15);
+    cr.position.set(-W / 2 + 1.5, 0, D / 2 - 1.15);        // 左前：旋转木马放南侧，不挡北边的格子
     g.add(cr);
     const ck = mkit(cr);
     ck.cyl(1.0, 1.05, 0.08, M.steelD, 0, 0, 0, 40);
@@ -145,7 +146,7 @@ export function buildFunPark(g, W, D, amb) {
 
   // ═════ 前右：马戏帐篷 ═════
   {
-    k.push(W / 2 - 1.55, 0, 1.55, 0);
+    k.push(W / 2 - 1.8, 0, -D / 2 + 1.0, 0);               // 右后：帐篷较矮，放北侧，避开前面摩天轮的遮挡
     const tm = mat('#ffffff', { map: stripeTex('#4dabf7', '#ffffff', 14), roughness: 0.6 });
     k.cyl(0.8, 0.8, 0.08, M.wood, 0, 0, 0, 36);
     k.geo(new THREE.CylinderGeometry(0.75, 0.75, 0.55, 36, 1, true), tm, 0, 0.35, 0, undefined, undefined, [Math.PI * 1.5, 0.55, Math.PI * 1.5]);
@@ -164,7 +165,7 @@ export function buildFunPark(g, W, D, amb) {
 
   // ═════ 后左：过山车 ═════
   {
-    const cx = -1.2, cz = -D / 2 + 1.25, rx = 1.65, rz = 0.8;
+    const cx = -1.2, cz = -D / 2 + 1.7, rx = 1.65, rz = 0.8;   // 左后：最高点在靠南的一侧
     const pts = [];
     for (let i = 0; i < 48; i++) {
       const a = i / 48 * Math.PI * 2;
@@ -249,7 +250,7 @@ export function buildFunPark(g, W, D, amb) {
 
   // ═════ 右侧：气球 ═════
   const balloons = new THREE.Group();
-  balloons.position.set(W / 2 - 0.45, 0, 0.3);
+  balloons.position.set(1.1, 0, 0.5);
   g.add(balloons);
   {
     const bk = mkit(balloons);

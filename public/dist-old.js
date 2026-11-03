@@ -1,5 +1,6 @@
 // 西北「古城」街区的中央景观（10 × 4）：
-// 后排左是宝塔，后排中是城墙和城楼；前排中是荷花池和石拱桥，右边是牌坊。
+// 高的放南侧（镜头在南边，高物体往上盖的是自己的空地，不会遮住北边的格子）：左前宝塔、右前城墙城楼；
+// 矮的放北侧：左后荷花池和石拱桥，右后牌坊。
 // 用 modeling.js 的零件箱重建，会动的（灯笼摇摆）单独放。
 import * as THREE from 'three';
 import { mkit, mat, TEX, canvasTex } from './modeling.js';
@@ -44,18 +45,14 @@ export function buildOldTown(g, W, D, amb) {
     k.cyl(0.004, 0.004, 0.14, CN.gold, x, y - 0.27, z, 4); k.ball(0.014, CN.gold, x, y - 0.27, z);
   };
 
-  // ───── 后排左：宝塔 ─────
-  k.push(-W / 2 + 1.5, 0, -0.4, 0);
-  const pagodaTopY = buildChinese(k, 5, roofCtx);
+  // ───── 左前：宝塔（5 层，高的放南侧，往上盖住的是自己的空地）─────
+  k.push(-W / 2 + 1.5, 0, D / 2 - 1.05, 0);
+  buildChinese(k, 4, roofCtx);
   k.pop();
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), new THREE.MeshBasicMaterial({ color: '#ff3b3b' }));
-  beacon.position.set(-W / 2 + 1.5, pagodaTopY - 0.1, -0.4);
-  g.add(beacon);
-  amb.push(t => { beacon.visible = Math.sin(t * 4) > 0; });
 
-  // ───── 后排中：城墙 + 城楼 ─────
+  // ───── 右前：城墙 + 城楼（门朝南）─────
   {
-    const gx = 0.7, gz = -D / 2 + 0.6, wl = 3.5, wh = 0.64, wd = 0.72;
+    const gx = 1.8, gz = D / 2 - 0.7, wl = 3.1, wh = 0.64, wd = 0.72;
     k.push(gx, 0, gz, 0);
     k.box(wl + 0.1, 0.08, wd + 0.1, CN.stone, 0, 0, 0, 0.02);
     k.box(wl, wh, wd, M.wall, 0, 0.08, 0, 0.02);
@@ -95,9 +92,10 @@ export function buildOldTown(g, W, D, amb) {
     stairs(k, gx, 0, gz + wd / 2 + 0.02, 0.5, 2, 0.03, 0.07);
   }
 
-  // ───── 右侧：牌坊（三间四柱，三重飞檐，夹杆石）─────
+  // ───── 右后：牌坊（三间四柱，三重飞檐，夹杆石）─────
   {
-    k.push(W / 2 - 1.3, 0, 0.55, 0);
+    const pfx = W / 2 - 1.5, pfz = -0.95;
+    k.push(pfx, 0, pfz, 0);
     const xs = [-0.85, -0.28, 0.28, 0.85], ph = 1.3;
     for (const x of xs) {
       k.box(0.2, 0.26, 0.2, CN.stone, x, 0, 0, 0.02);                   // 夹杆石
@@ -110,13 +108,13 @@ export function buildOldTown(g, W, D, amb) {
     cnRoof(k, roofCtx, 0.86, 0.34, 0.2, 1.3);                           // 中间高的
     for (const s of [-1, 1]) cnRoof(k, roofCtx, 0.62, 0.3, 0.14, 1.14, { x: s * 0.72, finial: false });
     k.pop();
-    lantern(W / 2 - 1.3 - 0.56, 0.62, 0.7);
-    lantern(W / 2 - 1.3 + 0.56, 0.62, 0.7);
+    lantern(pfx - 0.56, 0.62, pfz + 0.15);
+    lantern(pfx + 0.56, 0.62, pfz + 0.15);
   }
 
-  // ───── 前排中：荷花池 + 石拱桥 + 垂柳 ─────
+  // ───── 左后：荷花池 + 石拱桥 + 垂柳（平的、矮的放北侧）─────
   {
-    const px = 0.2, pz = 0.95, ax = 1.3, az = 0.7;
+    const px = -0.4, pz = -0.8, ax = 1.3, az = 0.7;
     // 水面（椭圆）和一圈池岸
     const water = new THREE.Mesh(new THREE.CircleGeometry(1, 48), M.water);
     water.rotation.x = -Math.PI / 2; water.position.set(px, 0.045, pz); water.scale.set(ax, az, 1); water.receiveShadow = true;
@@ -157,8 +155,8 @@ export function buildOldTown(g, W, D, amb) {
     // 垂柳
     const w = makeTree('willow', 0); w.position.set(px - ax - 0.5, 0, pz - 0.1); w.scale.setScalar(1.05); g.add(w);
   }
-  // 宝塔旁一棵松树
-  { const t = makeTree('pine', 1); t.position.set(-W / 2 + 0.5, 0, D / 2 - 0.5); t.scale.setScalar(1.0); g.add(t); }
+  // 北侧左角一棵松树
+  { const t = makeTree('pine', 1); t.position.set(-W / 2 + 0.5, 0, -D / 2 + 0.55); t.scale.setScalar(0.95); g.add(t); }
 
   k.finish();
   amb.push(t => { lanternMat.emissiveIntensity = 0.5 + Math.sin(t * 3) * 0.15; lanterns.forEach((l, i) => { l.rotation.z = Math.sin(t * 1.6 + i) * 0.08; }); });

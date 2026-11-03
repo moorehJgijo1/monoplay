@@ -1,5 +1,6 @@
 // 东北「金融区」街区的中央景观（8 × 4）：
-// 居中是证券交易所（古典柱廊 + 楼顶滚动行情屏），圆塔和方塔分列左右后角，喷泉在正前方，金牛和花坛在两侧前。
+// 高的放南侧（镜头在南边，高物体往上盖的是自己的空地）：圆塔和方塔分列左右前角，喷泉在中间；
+// 交易所居中靠北，金牛和花坛放北侧两角。
 // 用 modeling.js 的零件箱重建；行情屏、喷泉水柱、塔顶信标是单独的动画网格。
 import * as THREE from 'three';
 import { mkit, mat, TEX, canvasTex } from './modeling.js';
@@ -77,7 +78,7 @@ export function buildFinance(g, W, D, amb, api) {
 
   // ═════ 证券交易所（居中）═════
   {
-    k.push(0, 0, -0.5, 0);
+    k.push(0, 0, -0.75, 0);
     k.box(2.95, 0.08, 1.88, M.stone, 0, 0, 0, 0.02);
     k.box(2.72, 0.08, 1.66, M.stone, 0, 0.08, 0.02, 0.015);
     for (let i = 0; i < 3; i++) k.box(1.5 - i * 0.04, 0.055, 0.13, M.stone, 0, i * 0.055, 0.95 - i * 0.1, 0.01);   // 正门台阶
@@ -120,7 +121,7 @@ export function buildFinance(g, W, D, amb, api) {
     for (const s of [-1, 1]) k.cyl(0.03, 0.03, 0.3, M.frame, s * 1.0, ey + 0.24, -0.58, 8);
     k.pop();
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.34), new THREE.MeshBasicMaterial({ map: tickTex, toneMapped: false }));
-    screen.position.set(0, ey + 0.3 + 0.23, -0.5 - 0.58 + 0.075);
+    screen.position.set(0, ey + 0.3 + 0.23, -0.75 - 0.58 + 0.075);
     screen.renderOrder = 1;
     g.add(screen);
     let tickKey = '';
@@ -144,9 +145,9 @@ export function buildFinance(g, W, D, amb, api) {
     amb.push((t, dt) => { tickTex.offset.x = (tickTex.offset.x + dt * 0.06) % 1; });
   }
 
-  // ═════ 左后角：圆形玻璃塔 ═════
+  // ═════ 左前角：圆形玻璃塔 ═════
   {
-    const x = -W / 2 + 0.95, z = -D / 2 + 0.85, r = 0.5, h = 3.0, y0 = 0.3, circ = Math.PI * 2 * r;
+    const x = -W / 2 + 0.95, z = D / 2 - 0.85, r = 0.5, h = 3.0, y0 = 0.3, circ = Math.PI * 2 * r;
     k.push(x, 0, z, 0);
     k.cyl(0.7, 0.74, 0.3, M.stone, 0, 0, 0, 36);
     k.cyl(0.64, 0.64, 0.04, M.gold, 0, 0.3, 0, 36);
@@ -163,9 +164,9 @@ export function buildFinance(g, W, D, amb, api) {
     amb.push(t => { beacon.visible = Math.sin(t * 4) > 0; });
   }
 
-  // ═════ 右后角：青绿色方塔（带收分）═════
+  // ═════ 右前角：青绿色方塔（带收分）═════
   {
-    k.push(W / 2 - 1.0, 0, -D / 2 + 0.8, 0);
+    k.push(W / 2 - 1.0, 0, D / 2 - 0.8, 0);
     k.box(1.3, 0.2, 1.2, M.stone, 0, 0, 0, 0.02);
     k.box(1.0, 2.5, 0.9, M.curtainT, 0, 0.2, 0, 0.012);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(0.07, 2.5, 0.07, M.frame, sx * 0.5, 0.2, sz * 0.45, 0.008);
@@ -182,7 +183,7 @@ export function buildFinance(g, W, D, amb, api) {
 
   // ═════ 前排：喷泉（三层水盆）═════
   {
-    const fx = 0, fz = D / 2 - 0.62;
+    const fx = 0, fz = D / 2 - 0.9;
     k.push(fx, 0, fz, 0);
     k.cyl(0.9, 0.92, 0.01, M.stoneD, 0, 0.0, 0, 48);                                   // 地面的圆形铺装
     k.cyl(0.66, 0.7, 0.16, M.stone, 0, 0, 0, 40);
@@ -211,13 +212,13 @@ export function buildFinance(g, W, D, amb, api) {
       spray.scale.set(1, 0.6 + Math.sin(t * 5 + 1) * 0.1, 1);
       arcs.forEach((m, i) => { m.scale.y = 0.8 + 0.3 * Math.sin(t * 6 + i); });
     });
-    lamp(k, fx - 1.4, D / 2 - 0.35);
-    lamp(k, fx + 1.4, D / 2 - 0.35);
+    lamp(k, fx - 1.4, D / 2 - 0.5);
+    lamp(k, fx + 1.4, D / 2 - 0.5);
   }
 
-  // ═════ 左前：青铜金牛 ═════
+  // ═════ 左后：青铜金牛 ═════
   {
-    k.push(-2.4, 0, D / 2 - 0.65, 0.5);
+    k.push(-2.5, 0, -D / 2 + 0.75, 0.5);
     k.box(0.9, 0.1, 0.6, M.stone, 0, 0, 0, 0.02);
     k.box(0.76, 0.22, 0.46, M.stoneD, 0, 0.1, 0, 0.02);
     const by = 0.32;
@@ -235,11 +236,11 @@ export function buildFinance(g, W, D, amb, api) {
     k.pop();
   }
 
-  // ═════ 右前：花坛 ═════
+  // ═════ 右后：花坛 ═════
   {
-    k.cyl(0.34, 0.36, 0.16, M.stone, 2.4, 0, D / 2 - 0.65, 28);
-    k.cyl(0.29, 0.29, 0.02, M.soil, 2.4, 0.16, D / 2 - 0.65, 24);
-    const b = makeBush(2); b.position.set(2.4, 0.17, D / 2 - 0.65); b.scale.setScalar(1.25); g.add(b);
+    k.cyl(0.34, 0.36, 0.16, M.stone, 2.5, 0, -D / 2 + 0.75, 28);
+    k.cyl(0.29, 0.29, 0.02, M.soil, 2.5, 0.16, -D / 2 + 0.75, 24);
+    const b = makeBush(2); b.position.set(2.5, 0.17, -D / 2 + 0.75); b.scale.setScalar(1.25); g.add(b);
   }
 
   k.finish();
