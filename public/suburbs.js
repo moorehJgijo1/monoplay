@@ -201,7 +201,7 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
   const midN = -(IN_D + OUT_D) / 2, midS = (IN_D + OUT_D) / 2, midW = -(IN_W + OUT_W) / 2, midE = (IN_W + OUT_W) / 2;
   const bandD = OUT_D - IN_D;
 
-  // ---------- 西北：稻田、农家院、水车、温室、茶园、小山 ----------
+  // ---------- 西北：稻田和小山凉亭 ----------
   {
     // 稻田：田埂围着一块块水田，水面反光，秧苗一丛丛；田间有土路和稻草人
     const x0 = -IN_W + 0.3, x1 = -9.2, z0 = -OUT_D + 0.1, z1 = -IN_D - 0.1;
@@ -228,82 +228,6 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     S.cone(0.14, 0.08, M.hay, 0, 0.67, 0, 10);
     reserve(x0, z0, x1, z1);
 
-    // 农家院：正房 + 厢房 + 院墙门楼 + 草垛 + 水井 + 菜地 + 几只鸡
-    const roofTile = std('#3e4b5e', { roughness: 0.6 }), wall = std('#f3ece0'), redDoor = std('#b8382a');
-    function farmyard(x, z) {
-      const [, K] = spot(root, x, z);
-      K.box(1.0, 0.45, 0.62, wall, 0, 0, -0.55);
-      K.box(0.2, 0.3, 0.02, redDoor, 0, 0, -0.23);
-      K.box(0.18, 0.12, 0.02, std('#6b3a1a'), -0.3, 0.2, -0.23);
-      K.box(0.18, 0.12, 0.02, std('#6b3a1a'), 0.3, 0.2, -0.23);
-      roofCN(K, 1.0, 0.62, 0.26, roofTile, 0.45);
-      const side = new THREE.Group();
-      K.add(side, -0.62, 0, 0.05).rotation.y = Math.PI / 2;
-      const SK = kit(side);
-      SK.box(0.6, 0.36, 0.4, wall, 0, 0, 0);
-      roofCN(SK, 0.6, 0.4, 0.2, roofTile, 0.36, { finial: false });
-      const Y = at(x, z);
-      Y.box(1.5, 0.02, 1.5, M.path, 0, 0, 0);
-      // 院墙：前面留门
-      Y.box(0.87, 0.22, 0.06, wall, -0.315, 0, 0.74);
-      Y.box(0.27, 0.22, 0.06, wall, 0.615, 0, 0.74);
-      for (const sx of [-1, 1]) Y.box(0.06, 0.22, 1.5, wall, sx * 0.75, 0, 0);
-      Y.box(1.56, 0.03, 0.1, roofTile, 0, 0.22, 0.74);
-      // 院门：两根柱子 + 小门楼
-      Y.box(0.36, 0.06, 0.12, roofTile, 0.3, 0.32, 0.74);
-      Y.box(0.05, 0.32, 0.05, redDoor, 0.15, 0, 0.74);
-      Y.box(0.05, 0.32, 0.05, redDoor, 0.45, 0, 0.74);
-      // 草垛、水井、菜地、鸡
-      Y.cone(0.18, 0.32, M.hay, 0.5, 0.02, -0.05, 8);
-      Y.cyl(0.18, 0.18, 0.08, M.hay, 0.5, 0.02, -0.05, 8);
-      Y.cyl(0.1, 0.1, 0.12, M.stone, 0.05, 0.02, 0.1, 10);
-      Y.box(0.02, 0.2, 0.02, M.wood, -0.03, 0.14, 0.1);
-      Y.box(0.02, 0.2, 0.02, M.wood, 0.13, 0.14, 0.1);
-      Y.box(0.2, 0.02, 0.02, M.wood, 0.05, 0.33, 0.1);
-      for (let r = 0; r < 3; r++) Y.box(0.5, 0.05, 0.08, M.soil, -0.35, 0.02, 0.28 + r * 0.14);
-      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) Y.ball(0.035, M.leaf2, -0.55 + c * 0.13, 0.09, 0.28 + r * 0.14);
-      for (let k = 0; k < 3; k++) { Y.ball(0.04, M.white, 0.2 + k * 0.12, 0.06, 0.45 - k * 0.07); Y.ball(0.015, M.red, 0.22 + k * 0.12, 0.1, 0.45 - k * 0.07); }
-    }
-    farmyard(-7.6, midN - 0.4);
-    farmyard(-5.6, midN + 0.8);
-    // 水车：引水槽 + 池塘 + 小溪
-    const [wg, Wk] = spot(root, -4.2, midN - 1.0);
-    const pond = Wk.add(new THREE.Mesh(new THREE.CircleGeometry(0.75, 20), M.water), 0, 0.045, 0.3);
-    pond.rotation.x = -Math.PI / 2;
-    pond.castShadow = false;
-    const PW = at(-4.2, midN - 1.0);
-    for (let k = 0; k < 10; k++) { const a = k / 10 * Math.PI * 2; PW.geo(new THREE.DodecahedronGeometry(0.12, 0), M.stone, Math.cos(a) * 0.8, 0.05, 0.3 + Math.sin(a) * 0.8, { sy: 0.6 }); }
-    PW.box(0.12, 0.85, 0.12, M.wood, -0.28, 0, -0.3);
-    PW.box(0.12, 0.85, 0.12, M.wood, 0.28, 0, -0.3);
-    PW.box(0.16, 0.08, 1.2, M.plank, 0, 1.25, -0.9);
-    PW.box(0.04, 0.4, 0.04, M.wood, 0, 0.85, -1.4);
-    const wheel = new THREE.Group();
-    wheel.position.set(0, 0.7, -0.3);
-    wg.add(wheel);
-    const WK = kit(wheel);
-    for (const sx of [-0.12, 0.12]) WK.add(new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.03, 6, 24), M.wood), sx, 0, 0).rotation.y = Math.PI / 2;
-    WK.add(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8), M.wood), 0, 0, 0).rotation.z = Math.PI / 2;
-    for (let k = 0; k < 12; k++) {
-      const a = k / 12 * Math.PI * 2;
-      if (k % 2 === 0) WK.add(new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.2, 0.03), M.wood), 0, 0, 0).rotation.x = a;
-      WK.add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.15), M.plank), 0, Math.cos(a) * 0.6, Math.sin(a) * 0.6).rotation.x = a;
-    }
-    ticks.push((t, dt) => { wheel.rotation.x -= dt * 0.8; });
-    reserve(-9.2, z0, -3.2, z1);
-
-    // 北边中间：一排白色拱棚温室
-    for (let k = 0; k < 4; k++) {
-      const gx = -2.2 + k * 1.05;
-      const arch = new THREE.Shape();
-      arch.moveTo(-0.4, 0); arch.absarc(0, 0, 0.4, 0, Math.PI, false); arch.lineTo(-0.4, 0);
-      const geo = new THREE.ExtrudeGeometry(arch, { depth: 2.6, bevelEnabled: false, curveSegments: 10 });
-      geo.translate(0, 0, -1.3);
-      W0.geo(geo, std('#eef6f8', { transparent: true, opacity: 0.85, roughness: 0.2 }), gx, 0, midN - 0.2, { sy: 0.85 });
-      for (let r = 0; r < 5; r++) W0.box(0.5, 0.06, 0.12, M.leaf2, gx, 0, midN - 1.25 + r * 0.5);
-    }
-    W0.box(4.6, 0.02, 0.35, M.path, -0.6, 0, midN + 1.35);
-    reserve(-2.8, midN - 1.6, 1.6, midN + 1.6);
-
     // 西北角的小山：山上有石阶通到亭子，山脚有石头和松树
     const hx = -OUT_W + 2.2, hz = -OUT_D + 2.0;
     const [, H] = spot(root, hx, hz);
@@ -326,25 +250,9 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     for (let k = 0; k < 6; k++) rock(hx + Math.cos(k) * 2.4, hz + Math.sin(k) * 2.0, 0.8 + rng());
     reserve(-OUT_W, -OUT_D, -OUT_W + 4.6, -OUT_D + 4.2);
 
-    // 西边北段：茶园梯田，顶上一座茶亭，采茶小路
-    const tx = midW, tz = -6.4;
-    const T = at(tx, tz);
-    const tea = std('#4f9d3c', { flatShading: true }), soil = std('#a07a4d');
-    for (let k = 0; k < 3; k++) {
-      const w = 3.6 - k * 0.9, d = 4.8 - k * 1.2;
-      T.box(w, 0.32, d, soil, 0, k * 0.32, 0);
-      for (let r = 0; r < Math.floor(d / 0.36); r++) for (let c = 0; c < Math.floor((w - 0.3) / 0.3); c++) {
-        T.geo(new THREE.IcosahedronGeometry(0.11, 0), tea, -w / 2 + 0.3 + c * 0.3, k * 0.32 + 0.36, -d / 2 + 0.22 + r * 0.36, { sy: 0.7 });
-      }
-    }
-    for (let k = 0; k < 3; k++) T.box(0.3, 0.06, 0.4, M.stone, 1.0 - k * 0.45, k * 0.32, 1.9 - k * 0.6);
-    const [, TP] = spot(root, tx, tz, 0, 0.96);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) TP.cyl(0.025, 0.025, 0.35, std('#b8382a'), sx * 0.18, 0, sz * 0.18, 6);
-    roofCN(TP, 0.42, 0.42, 0.24, std('#3e4b5e'), 0.35);
-    reserve(midW - 1.9, tz - 2.5, midW + 1.9, tz + 2.5);
   }
 
-  // ---------- 东北：机场、住宅区、体育场 ----------
+  // ---------- 北边和东北：机场、体育场 ----------
   {
     const rz = -OUT_D + 0.7, rx0 = 3.0, rx1 = OUT_W - 2.6, rl = rx1 - rx0;
     // 跑道：沥青、白色中线、两头的入口标记和编号、两边一排跑道灯
@@ -418,14 +326,6 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     sock.position.set(rx1 + 0.88, 0.66, rz + 0.95);
     root.add(sock);
     ticks.push(t => { sock.rotation.y = Math.sin(t * 0.7) * 0.4; sock.rotation.z = Math.PI / 2 - 0.1 + Math.sin(t * 3) * 0.05; });
-    // 地勤车：行李拖车、加油车
-    const G = at(ax - 2.5, apronZ + 0.25);
-    G.box(0.3, 0.12, 0.18, M.yellow, 0, 0.03, 0);
-    for (let k = 1; k <= 3; k++) { G.box(0.24, 0.1, 0.16, M.grey, -k * 0.3, 0.03, 0); G.box(0.2, 0.08, 0.14, C(['#e03131', '#1c7ed6', '#2f9e44'][k - 1]), -k * 0.3, 0.13, 0); }
-    const Fu = at(ax + 2.6, apronZ + 0.3, 0.3);
-    Fu.box(0.2, 0.16, 0.22, M.white, 0.3, 0.03, 0);
-    Fu.cyl(0.11, 0.11, 0.48, M.white, -0.05, 0.14, 0, 12, { rz: Math.PI / 2 });
-    Fu.box(0.5, 0.02, 0.06, M.red, -0.05, 0.25, 0.1);
     reserve(rx0 - 0.4, rz - 0.75, rx1 + 1.0, tz + 0.6);
 
     // 飞机：机头朝 +z（方便 lookAt），白色机身、蓝色尾翼和腰线
@@ -469,25 +369,6 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
       flyer.rotateZ(Math.sin(fu * Math.PI * 2) * 0.25 * Math.min(1, q.y / 3));
     });
 
-    // 住宅区：每户一块草坪、白栅栏、车道和一辆车
-    const roofs = ['#e03131', '#1c7ed6', '#f59f00', '#2f9e44', '#7048e8', '#e64980'];
-    let k = 0;
-    for (const z of [-IN_D - 0.05, -IN_D + 1.75]) for (const x of [midE - 1.05, midE + 1.05]) {
-      const Lw = at(x, z);
-      Lw.box(1.9, 0.03, 1.6, C('#9ad97a'), 0, 0, 0);
-      Lw.box(0.35, 0.035, 0.8, M.concrete, 0.7, 0, 0.4);
-      fence(x - 0.95, z + 0.8, x + 0.5, z + 0.8, M.white, 0.16);
-      parkedCar(x + 0.7, z + 0.45, Math.PI / 2, CAR_COLORS[(k * 3) % CAR_COLORS.length]);
-      bush(x - 0.75, z + 0.55, 0.8);
-      bush(x - 0.45, z + 0.6, 0.7, M.leaf2);
-      const b = makeBuilding('cbd', 1 + (k % 2), roofs[k % roofs.length], { flag: false }); // 不插地主小旗子
-      b.position.set(x - 0.2, 0.03, z - 0.15);
-      b.scale.setScalar(0.85);
-      root.add(b);
-      k++;
-    }
-    W0.box(0.3, 0.02, 3.6, M.concrete, midE, 0, -IN_D + 0.85);
-    reserve(midE - 2.0, -IN_D - 0.9, midE + 2.0, -IN_D + 2.6);
 
     // 东边北段：体育场——三层看台（蓝白相间）、顶棚、球场、记分牌、灯架，门口一个小停车场
     const sx0 = midE, sz0 = -4.9;
@@ -526,48 +407,8 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     reserve(sx0 - 2.0, sz0 - 2.8, sx0 + 2.0, sz0 + 2.8);
   }
 
-  // ---------- 西边：渔村 + 晾鱼架 + 渔船栈桥，海上的港口和货轮 ----------
+  // ---------- 西边：海上的港口和货轮 ----------
   {
-    const roofs = ['#1c7ed6', '#22b8cf', '#f59f00', '#e64980', '#2f9e44'];
-    W0.box(0.35, 0.02, 7.6, M.path, midW + 1.6, 0, 3.4);
-    [[0.3, 0], [2.2, 1], [4.1, 2], [6.0, 1]].forEach(([z, lv], k) => {
-      const b = makeBuilding('beach', lv, roofs[k], { flag: false });
-      b.position.set(midW + 0.55, 0, z);
-      b.rotation.y = Math.PI / 2;
-      root.add(b);
-      const palm = palmTree(0.9);
-      palm.position.set(midW - 1.25, 0, z + 0.85);
-      palm.rotation.y = k * 1.7;
-      root.add(palm);
-      // 门口的晾鱼架或渔网
-      const R = at(midW - 0.7, z - 0.25);
-      if (k % 2 === 0) {
-        R.box(0.03, 0.35, 0.03, M.wood, -0.25, 0, 0); R.box(0.03, 0.35, 0.03, M.wood, 0.25, 0, 0);
-        R.box(0.55, 0.02, 0.02, M.wood, 0, 0.33, 0);
-        for (let i = 0; i < 5; i++) R.box(0.04, 0.12, 0.015, C('#adb5bd'), -0.2 + i * 0.1, 0.2, 0);
-      } else {
-        R.geo(new THREE.SphereGeometry(0.22, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), C('#b58b5a'), 0, 0, 0, { sy: 0.4 });
-        R.cyl(0.08, 0.08, 0.12, C('#4dabf7'), 0.3, 0, 0.1, 10);
-      }
-    });
-    reserve(midW - 2, -0.6, midW + 2, 7.6);
-    // 渔船栈桥（南边一点），几条小渔船随浪晃
-    const jz = 9.6;
-    W0.box(3.6, 0.06, 0.4, M.plank, -IW - 1.2, -0.1, jz);
-    for (let x = -IW + 0.4; x > -IW - 3; x -= 0.6) for (const s of [-1, 1]) W0.cyl(0.03, 0.03, 0.7, M.wood, x, -0.7, jz + s * 0.18, 5);
-    const boats = [];
-    [[-IW - 0.8, jz + 0.55, '#e03131'], [-IW - 2.0, jz - 0.55, '#1c7ed6'], [-IW - 2.6, jz + 0.6, '#f59f00']].forEach(([x, z, c], k) => {
-      const [g, K] = spot(root, x, z, Math.PI / 2 + k * 0.2, -0.62);
-      const hull = new THREE.Shape();
-      hull.moveTo(-0.35, 0.05); hull.lineTo(0.3, 0.05); hull.lineTo(0.42, 0.14); hull.lineTo(-0.38, 0.14); hull.closePath();
-      K.add(new THREE.Mesh(new THREE.ExtrudeGeometry(hull, { depth: 0.24, bevelEnabled: false }), std(c)), 0, 0, -0.12);
-      K.box(0.7, 0.02, 0.2, M.plank, 0, 0.14, 0);
-      K.box(0.18, 0.14, 0.16, M.white, -0.15, 0.14, 0);
-      K.cyl(0.01, 0.01, 0.4, M.wood, 0.1, 0.14, 0, 4);
-      boats.push({ g, ph: k * 1.7 });
-    });
-    ticks.push(t => boats.forEach(({ g, ph }) => { g.position.y = -0.62 + Math.sin(t * 1.5 + ph) * 0.03; g.rotation.z = Math.sin(t * 1.2 + ph) * 0.05; }));
-
     // 港口：海里的码头平台
     const qx0 = -IW - 0.2, qx1 = -IW - 4.2, qz0 = -1.5, qz1 = 8.2;
     const qcx = (qx0 + qx1) / 2, qcz = (qz0 + qz1) / 2, qw = Math.abs(qx1 - qx0), qd = qz1 - qz0;
@@ -654,77 +495,8 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     });
   }
 
-  // ---------- 东边：加油站、露营地、热气球、海上风车 ----------
+  // ---------- 东边：海上风车 ----------
   {
-    // 加油站（东边中段，靠着环岛路）
-    const gx = midE + 0.3, gz = -0.2;
-    const Gs = at(gx, gz);
-    Gs.box(3.2, 0.03, 2.2, M.concrete, 0, 0, 0);
-    Gs.box(2.0, 0.12, 1.2, M.white, -0.1, 0.9, 0.1);
-    Gs.box(2.02, 0.05, 1.22, M.red, -0.1, 0.92, 0.1);
-    for (const [x, z] of [[-0.9, -0.35], [0.7, -0.35], [-0.9, 0.55], [0.7, 0.55]]) Gs.box(0.07, 0.9, 0.07, M.white, x, 0, z);
-    for (const x of [-0.5, 0.3]) { Gs.box(0.3, 0.06, 0.2, M.concrete, x, 0.03, 0.1); Gs.box(0.14, 0.32, 0.12, M.white, x, 0.09, 0.1); Gs.box(0.1, 0.08, 0.01, M.green, x, 0.3, 0.165); }
-    Gs.box(0.9, 0.5, 0.6, std('#fff4e6'), -0.95, 0, -0.75);
-    Gs.box(0.8, 0.25, 0.02, M.glass, -0.95, 0.08, -0.44);
-    Gs.box(0.95, 0.06, 0.65, M.red, -0.95, 0.5, -0.75);
-    Gs.box(0.06, 1.1, 0.06, M.dark, 1.3, 0, -0.85);
-    Gs.box(0.4, 0.4, 0.06, M.red, 1.3, 1.1, -0.85);
-    parkedCar(gx + 0.1, gz + 0.1, 0, '#2f9e44');
-    reserve(gx - 1.7, gz - 1.2, gx + 1.7, gz + 1.2);
-
-    // 露营地：木栅栏围着的草地、碎石小路、人字帐篷、野餐桌、房车、篝火圈
-    const cx = midE, cz = 4.3;
-    const F = at(cx, cz);
-    F.box(3.6, 0.025, 3.6, C('#a3dc7f'), 0, 0, 0);
-    F.box(0.35, 0.03, 3.6, M.path, -0.2, 0, 0);
-    fence(cx - 1.8, cz - 1.8, cx + 1.8, cz - 1.8);
-    fence(cx - 1.8, cz + 1.8, cx + 1.8, cz + 1.8);
-    fence(cx - 1.8, cz - 1.8, cx - 1.8, cz + 1.8);
-    const tentShape = new THREE.Shape();
-    tentShape.moveTo(-0.25, 0); tentShape.lineTo(0.25, 0); tentShape.lineTo(0, 0.38); tentShape.closePath();
-    ['#ff922b', '#4dabf7', '#ff6b6b', '#51cf66'].forEach((c, k) => {
-      const tg = new THREE.ExtrudeGeometry(tentShape, { depth: 0.55, bevelEnabled: false });
-      tg.translate(0, 0, -0.275);
-      const tx = k < 2 ? -1.1 : 0.8, tz = (k % 2 ? 0.9 : -0.9) - 0.2;
-      F.geo(tg, std(c, { flatShading: true }), tx, 0.02, tz, { ry: Math.PI / 2 });
-      F.geo(new THREE.PlaneGeometry(0.2, 0.25), M.dark, tx + 0.28, 0.13, tz, { ry: Math.PI / 2 });
-    });
-    // 野餐桌
-    F.box(0.5, 0.04, 0.24, M.plank, 0.85, 0.22, 0.15);
-    for (const s of [-1, 1]) { F.box(0.5, 0.03, 0.1, M.plank, 0.85, 0.12, 0.15 + s * 0.22); F.box(0.04, 0.22, 0.2, M.wood, 0.85 + s * 0.2, 0, 0.15); }
-    // 房车
-    F.box(0.9, 0.42, 0.42, M.white, -1.0, 0.08, 1.35);
-    F.box(0.9, 0.08, 0.43, C('#20c997'), -1.0, 0.2, 1.35);
-    F.box(0.5, 0.12, 0.44, M.glass, -0.95, 0.34, 1.35);
-    for (const x of [-1.3, -0.7]) for (const s of [-1, 1]) F.cyl(0.07, 0.07, 0.04, M.tire, x, 0.07, 1.35 + s * 0.21, 8, { rx: Math.PI / 2 });
-    // 篝火圈
-    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; F.geo(new THREE.DodecahedronGeometry(0.06, 0), M.stone, -0.2 + Math.cos(a) * 0.2, 0.04, -0.1 + Math.sin(a) * 0.2); }
-    for (let k = 0; k < 3; k++) { const a = k * 2.1; F.box(0.24, 0.04, 0.04, M.wood, -0.2, 0.08, -0.1, { ry: a, rz: 0.4 }); }
-    for (let k = 0; k < 4; k++) { const a = k * 1.57 + 0.8; F.box(0.3, 0.07, 0.07, M.wood, -0.2 + Math.cos(a) * 0.55, 0.03, -0.1 + Math.sin(a) * 0.55, { ry: -a + Math.PI / 2 }); }
-    const fire = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.24, 6), new THREE.MeshBasicMaterial({ color: '#ff7a1a' }));
-    fire.position.set(cx - 0.2, 0.2, cz - 0.1);
-    const fire2 = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), new THREE.MeshBasicMaterial({ color: '#ffd43b' }));
-    fire2.position.set(cx - 0.2, 0.16, cz - 0.1);
-    root.add(fire, fire2);
-    ticks.push(t => { fire.scale.y = 0.8 + Math.sin(t * 13) * 0.2; fire2.scale.y = 0.8 + Math.sin(t * 17 + 1) * 0.25; });
-    reserve(cx - 1.9, cz - 1.9, cx + 1.9, cz + 1.9);
-
-    // 热气球：三只在营地上空慢慢上下飘，篮子里有人
-    const balloons = [];
-    [['#ff6b6b', '#ffd34d'], ['#4dabf7', '#ffffff'], ['#51cf66', '#ff922b']].forEach(([c1, c2], k) => {
-      const tex = canvasTex(128, 16, (c, w) => { for (let i = 0; i < 12; i++) { c.fillStyle = i % 2 ? c1 : c2; c.fillRect(i * w / 12, 0, w / 12, 16); } });
-      const b = new THREE.Group();
-      const K = kit(b);
-      const env = new THREE.LatheGeometry([[0.12, -0.45], [0.35, -0.2], [0.55, 0.2], [0.58, 0.55], [0.48, 0.85], [0.25, 1.02], [0, 1.06]].map(([x, y]) => new THREE.Vector2(x, y)), 16);
-      K.add(new THREE.Mesh(env, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, side: THREE.DoubleSide })), 0, 0.1, 0);
-      K.box(0.2, 0.15, 0.2, std('#8a5a2b'), 0, -0.6, 0);
-      K.ball(0.04, C('#f1d9a7'), 0.04, -0.4, 0);
-      for (const [x, z] of [[0.09, 0.09], [-0.09, 0.09], [0.09, -0.09], [-0.09, -0.09]]) K.cyl(0.004, 0.004, 0.3, M.dark, x, -0.45, z, 3);
-      b.position.set(midE - 1.0 + k * 1.1, 0, 3.0 - k * 1.1);
-      root.add(b);
-      balloons.push({ b, ph: k * 2.1, h: 4.3 + k * 1.1 });
-    });
-    ticks.push(t => balloons.forEach(({ b, ph, h }) => { b.position.y = h + Math.sin(t * 0.4 + ph) * 0.6; b.rotation.y = t * 0.1 + ph; }));
     // 海上风车
     const turbines = [];
     [-9, -1, 7].forEach((z, k) => {
@@ -793,23 +565,6 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     reserve(bx - 3.5, z - bandD / 2, bx + 3.5, z + bandD / 2);
     [[-13.6, z - 1.0], [-6.1, z + 1.2]].forEach(([x, zz]) => { const p = palmTree(0.9); p.position.set(x, 0, zz); root.add(p); });
 
-    // 西段与中间之间：儿童游乐场（滑梯、秋千、跷跷板、沙坑）
-    const px = -4.2;
-    const Pg = at(px, z);
-    Pg.box(2.6, 0.03, 2.4, C('#ffd8a8'), 0, 0, 0);
-    Pg.box(0.7, 0.04, 0.7, M.sand, 0.75, 0.03, 0.6);
-    Pg.box(0.8, 0.06, 0.06, M.wood, 0.75, 0.03, 0.25); Pg.box(0.8, 0.06, 0.06, M.wood, 0.75, 0.03, 0.95);
-    for (const x of [-1.0, -0.2]) for (const zz of [-0.65, -0.35]) Pg.box(0.04, 0.6, 0.04, M.blue, x, 0, zz);
-    Pg.box(0.85, 0.04, 0.04, M.blue, -0.6, 0.6, -0.5);
-    for (const x of [-0.8, -0.4]) { Pg.box(0.01, 0.38, 0.01, M.grey, x, 0.2, -0.5); Pg.box(0.16, 0.02, 0.1, M.red, x, 0.18, -0.5); }
-    Pg.box(0.3, 0.45, 0.3, M.yellow, 0.7, 0, -0.6);
-    Pg.box(0.34, 0.04, 0.34, M.red, 0.7, 0.45, -0.6);
-    Pg.box(0.18, 0.03, 0.7, M.green, 0.7, 0.24, -0.15, { rx: 0.62 });
-    Pg.box(0.6, 0.03, 0.08, M.orange, -0.6, 0.12, 0.6, { rz: 0.2 });
-    Pg.box(0.06, 0.1, 0.06, M.dark, -0.6, 0.03, 0.6);
-    fence(px - 1.3, z - 1.2, px + 1.3, z - 1.2, M.white, 0.15);
-    bench(px - 1.0, z + 0.95);
-    reserve(px - 1.4, z - 1.3, px + 1.4, z + 1.3);
 
     // 中间：欢迎花坛——一圈圈花环、小喷泉，后面是欢迎牌
     const Wl = at(0, z);
@@ -838,14 +593,6 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     ticks.push(t => { water.scale.y = 1 + Math.sin(t * 5) * 0.15; });
     reserve(-1.7, z - 1.6, 1.7, z + 1.5);
 
-    // 中间与东段之间：停车场（白色车位线、几辆车、路灯）
-    const kx = 4.2;
-    W0.box(2.8, 0.035, 2.4, M.asphalt, kx, 0, z);
-    for (let k = 0; k <= 5; k++) for (const s of [-1, 1]) W0.box(0.03, 0.01, 0.7, M.white, kx - 1.25 + k * 0.5, 0.04, z + s * 0.75);
-    [[0, -1, '#e03131'], [1, -1, '#1c7ed6'], [3, -1, '#ffffff'], [1, 1, '#f59f00'], [2, 1, '#495057'], [4, 1, '#20c997']].forEach(([i, s, c]) => parkedCar(kx - 1.0 + i * 0.5, z + s * 0.75, Math.PI / 2, c));
-    lamp(kx - 1.35, z, 0);
-    lamp(kx + 1.35, z, Math.PI);
-    reserve(kx - 1.5, z - 1.3, kx + 1.5, z + 1.3);
 
     // 东段：水上乐园——瓷砖泳池、分道线、螺旋滑梯、懒人河、躺椅、凉亭、围栏
     const wx = 9.6;

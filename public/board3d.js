@@ -367,7 +367,7 @@ export function createBoard3D(container, E, opts = {}) {
       if (!onIsland(p.x, p.z, 0.8) || suburbs.blocked(p.x, p.z)) continue;
       if (inside || nearRoad(x, z)) {
         const paved = onPlaza(p.x, p.z);
-        if (rng() < 0.55) {
+        if (rng() < 0.22) {
           const b = makeBush(Math.floor(rng() * 4));
           b.position.set(p.x + (rng() - 0.5) * U * 0.5, paved ? 0.09 : 0.0, p.z + (rng() - 0.5) * U * 0.5);
           if (paved) planter(b.position.x, b.position.z, 0.36);
@@ -375,15 +375,15 @@ export function createBoard3D(container, E, opts = {}) {
           b.rotation.y = rng() * 6.28;
           scene.add(b);
         }
-        if (rng() < 0.3) { const fx = p.x + (rng() - 0.5) * U * 0.5, fz = p.z + (rng() - 0.5) * U * 0.5; if (paved) planter(fx, fz, 0.5); flowers(fx, fz); }
+        if (rng() < 0.07) { const fx = p.x + (rng() - 0.5) * U * 0.5, fz = p.z + (rng() - 0.5) * U * 0.5; if (paved) planter(fx, fz, 0.5); flowers(fx, fz); }
         if (inside && !nearRoad(x, z)) { const t = themedTree(p.x, p.z, 0.8); if (paved) { planter(p.x, p.z, 0.46); t.position.y = 0.09; } }
         continue;
       }
       // 镜头一侧（南边）只种花和矮树，免得挡住马路
-      if (z >= MAP_H) { if (rng() < 0.4) flowers(p.x, p.z); else if (rng() < 0.3) themedTree(p.x, p.z, 0.6); continue; }
-      // 岛边一圈种得密一些，像树林
+      if (z >= MAP_H) { if (rng() < 0.1) flowers(p.x, p.z); else if (rng() < 0.12) themedTree(p.x, p.z, 0.6); continue; }
+      // 外围留出大片草地，只在岛边零星种几棵，不再每格都种
       const edge = x < -1 || x > MAP_W || z < -1;
-      const n = edge && rng() < 0.75 ? 2 : 1;
+      const n = rng() < (edge ? 0.32 : 0.12) ? 1 : 0;
       for (let k = 0; k < n; k++) {
         const tx = p.x + (rng() - 0.5) * U * 0.9, tz = p.z + (rng() - 0.5) * U * 0.9;
         if (onIsland(tx, tz, 0.6) && !suburbs.blocked(tx, tz, 0.3)) themedTree(tx, tz, 0.75 + rng() * 0.55);
