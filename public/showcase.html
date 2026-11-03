@@ -15,9 +15,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { makeBuilding, lotMaterials } from './buildings.js';
+import { makeTree, makeBush, makeRock, makeHill } from './nature.js';
 
 const q = new URLSearchParams(location.search);
-const styles = q.get('style') ? [q.get('style')] : ['cbd', 'old', 'beach', 'fun'];
+const NATURE = q.get('nature');
+const styles = NATURE ? [] : q.get('style') ? [q.get('style')] : ['cbd', 'old', 'beach', 'fun'];
 const levels = q.get('level') !== null ? [+q.get('level')] : [0, 1, 2, 3, 4, 5];
 const color = q.get('color') || '#e8453c';
 
@@ -67,9 +69,20 @@ styles.forEach((st, r) => levels.forEach((lv, c) => {
   scene.add(b);
 }));
 
+// ?nature=1：树、灌木、岩石、山丘排成一排
+if (NATURE) {
+  const items = [];
+  for (let i = 0; i < 4; i++) items.push(makeTree('round', i));
+  for (let i = 0; i < 3; i++) items.push(makeTree('pine', i));
+  for (let i = 0; i < 3; i++) items.push(makeTree('palm', i));
+  for (let i = 0; i < 3; i++) items.push(makeBush(i));
+  for (let i = 0; i < 4; i++) items.push(makeRock(0.5, i));
+  items.forEach((o, i) => { o.position.set((i - (items.length - 1) / 2) * 1.15, 0, 0); scene.add(o); });
+  const h = makeHill(2.2, 1.6, 5); h.position.set(0, 0, -5); scene.add(h);
+}
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 400);
 const single = levels.length === 1 && styles.length === 1;
-const dist = +q.get('dist') || (single ? 9 : Math.max(levels.length * SP * 1.25, styles.length * SP * 2.2));
+const dist = +q.get('dist') || (NATURE ? 12 : 0) || (single ? 9 : Math.max(levels.length * SP * 1.25, styles.length * SP * 2.2));
 camera.position.set(0, dist * (single ? 0.5 : 0.62), dist);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, single ? 1.2 : 0.6, 0);

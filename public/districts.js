@@ -4,6 +4,7 @@
 // 只是装饰，不影响规则。镜头在南边（+z），高的东西尽量放在街区南侧，免得挡住后面的马路。
 import * as THREE from 'three';
 import { roofCN, kit, turret } from './buildings.js';
+import { makeTree, makePalm, makeBush, makeRock } from './nature.js';
 
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05, ...extra });
@@ -203,12 +204,7 @@ function buildOldTown(g, W, D, amb) {
   willow(px + 1.55, pz + 0.2);
   willow(px - 1.6, pz - 0.3);
   // 松树
-  const pineMat = std('#2f6b3e', { flatShading: true });
-  const pine = (x, z, s) => {
-    cyl(g, 0.05 * s, 0.07 * s, 0.4 * s, wood, x, 0, z, 6);
-    put(g, new THREE.ConeGeometry(0.42 * s, 0.6 * s, 7), pineMat, x, 0.6 * s, z);
-    put(g, new THREE.ConeGeometry(0.32 * s, 0.5 * s, 7), pineMat, x, 0.88 * s, z);
-  };
+  const pine = (x, z, s) => { const t = makeTree('pine', Math.floor((x + z) * 7) & 3); t.position.set(x, 0, z); t.scale.setScalar(s * 1.1); g.add(t); };
   pine(-W / 2 + 0.6, -D / 2 + 0.5, 1.1);
   pine(-W / 2 + 1.5, -D / 2 + 0.45, 0.9);
   pine(-W / 2 + 2.3, D / 2 - 0.35, 0.8);
@@ -341,7 +337,7 @@ function buildFinance(g, W, D, amb, api) {
   const leaf = std('#4caf50', { flatShading: true });
   for (const [x, z] of [[-W / 2 + 2.5, -D / 2 + 0.4], [0.3, -D / 2 + 0.45], [W / 2 - 0.3, D / 2 - 1.6]]) {
     box(g, 0.45, 0.2, 0.45, stone, x, 0, z);
-    put(g, new THREE.IcosahedronGeometry(0.28, 0), leaf, x, 0.55, z);
+    const bsh = makeBush(Math.floor(x * 3) & 3); bsh.position.set(x, 0.33, z); bsh.scale.setScalar(1.15); g.add(bsh);
   }
   const lampMat = new THREE.MeshStandardMaterial({ color: '#fff7d6', emissive: '#ffd56b', emissiveIntensity: 0.5 });
   for (const x of [-0.6, 1.7, 3.0]) {
@@ -403,7 +399,7 @@ function buildBeach(g, W, D, amb) {
   const lh = new THREE.Group();
   lh.position.set(W / 2 - 0.85, 0, D / 2 - 0.9);
   g.add(lh);
-  put(lh, new THREE.DodecahedronGeometry(0.55, 0), std('#8d8a83', { flatShading: true }), 0, 0.15, 0).scale.set(1.2, 0.5, 1.2);
+  { const r = makeRock(0.72, 2); r.scale.set(0.86, 0.62, 0.86); r.position.set(0, 0.17, 0); lh.add(r); }
   const stripes = ['#e8452c', '#ffffff'];
   for (let k = 0; k < 5; k++) cyl(lh, 0.3 - (k + 1) * 0.03, 0.3 - k * 0.03, 0.5, std(stripes[k % 2]), 0, 0.35 + k * 0.5, 0, 16);
   cyl(lh, 0.22, 0.22, 0.06, std('#2b3442'), 0, 2.85, 0, 16);
@@ -422,32 +418,7 @@ function buildBeach(g, W, D, amb) {
   lh.add(beamPivot);
   amb.push((t, dt) => { beamPivot.rotation.y += dt * 1.2; });
   // 椰子树
-  const trunk = std('#9b6b3d'), frond = std('#3fae49', { flatShading: true, side: THREE.DoubleSide });
-  const palm = (x, z, lean, s) => {
-    const p = new THREE.Group();
-    p.position.set(x, 0, z);
-    p.rotation.y = lean;
-    p.scale.setScalar(s);
-    g.add(p);
-    let px = 0, py = 0;
-    for (let k = 0; k < 6; k++) {
-      const seg = cyl(p, 0.07 - k * 0.006, 0.08 - k * 0.006, 0.3, trunk, px, py, 0, 7);
-      seg.rotation.z = -k * 0.07;
-      px += Math.sin(k * 0.07) * 0.3; py += Math.cos(k * 0.07) * 0.28;
-    }
-    for (let k = 0; k < 6; k++) {
-      const f = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.2), frond);
-      f.geometry.translate(0.37, 0, 0);
-      const holder = new THREE.Group();
-      holder.position.set(px, py + 0.05, 0);
-      holder.rotation.y = k / 6 * Math.PI * 2;
-      f.rotation.set(Math.PI / 2, -0.35, 0);
-      f.castShadow = true;
-      holder.add(f);
-      p.add(holder);
-    }
-    put(p, new THREE.SphereGeometry(0.06, 8, 6), std('#6b4423'), px + 0.06, py - 0.06, 0.04);
-  };
+  const palm = (x, z, lean, s) => { const p = makePalm(Math.floor(x * 5 + z * 3) & 3); p.position.set(x, 0, z); p.rotation.y = lean; p.scale.setScalar(s * 1.15); g.add(p); };
   palm(W / 2 - 0.75, -D / 2 + 0.85, 0.4, 1.0);
   palm(W / 2 - 1.5, -D / 2 + 0.5, 2.2, 1);
   palm(-W / 2 + 0.5, D / 2 - 0.5, -0.8, 1.05);

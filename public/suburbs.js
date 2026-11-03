@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { kit, roofCN, makeBuilding, palmTree, FONT } from './buildings.js';
+import { makeTree, makeHill, makeRock, rockGeo, blobGeo } from './nature.js';
 
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, ...extra });
 function canvasTex(w, h, draw, repeat) {
@@ -70,7 +71,7 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     asphalt: std('#4d5866', { roughness: 0.9 }), line: std('#fff6d8'), yellow: std('#ffd43b'), concrete: std('#cfcac0'), white: std('#ffffff'),
     grey: std('#9aa0a6'), dark: std('#36414f'), wood: std('#8a5a2b'), plank: std('#b98a55'), water: std('#4cc0e0', { roughness: 0.12, metalness: 0.1 }),
     sand: std('#f1dca6', { roughness: 1 }), red: std('#e03131'), glass: std('#8fd0ff', { metalness: 0.3, roughness: 0.2 }),
-    leaf: std('#4caf50', { flatShading: true }), leaf2: std('#6bcf63', { flatShading: true }), hay: std('#e8c35a', { flatShading: true }),
+    leaf: std('#4caf50', { roughness: 0.85 }), leaf2: std('#6bcf63', { roughness: 0.85 }), stoneS: std('#a9a499', { roughness: 0.95 }), hay: std('#e8c35a', { flatShading: true }),
     soil: std('#9c7a52'), path: std('#d9c7a0', { roughness: 1 }), stone: std('#b5b0a5', { flatShading: true }), tire: std('#25262b'),
     lampGlow: std('#fff7d6', { emissive: '#ffd56b', emissiveIntensity: 0.5 }), redLight: new THREE.MeshBasicMaterial({ color: '#ff3b3b' }),
     green: std('#2f9e44'), orange: std('#ff922b'), blue: std('#1c7ed6'),
@@ -94,7 +95,7 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     B.box(0.42, 0.1, 0.02, M.plank, 0, 0.17, -0.06);
     for (const sx of [-0.17, 0.17]) B.box(0.03, 0.12, 0.12, M.dark, sx, 0, 0);
   }
-  function bush(x, z, s = 1, mat = M.leaf) { W0.geo(new THREE.IcosahedronGeometry(0.22 * s, 0), mat, x, 0.16 * s, z, { sy: 0.8 }); }
+  function bush(x, z, s = 1, mat = M.leaf) { const v = Math.floor(rng() * 4); W0.geo(blobGeo(v), mat, x, 0.15 * s, z, { sx: 0.25 * s, sy: 0.2 * s, sz: 0.25 * s, ry: rng() * 6 }); }
   function flowerBed(x, z, w, d, colors) {
     W0.box(w, 0.08, d, M.soil, x, 0, z);
     const n = Math.max(2, Math.round(w / 0.16)), m = Math.max(1, Math.round(d / 0.16));
@@ -111,7 +112,7 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     F.box(len, 0.03, 0.02, mat, 0, h * 0.45, 0);
     F.box(len, 0.03, 0.02, mat, 0, h * 0.85, 0);
   }
-  function rock(x, z, s = 1) { W0.geo(new THREE.DodecahedronGeometry(0.2 * s, 0), M.stone, x, 0.08 * s, z, { sy: 0.6, ry: rng() * 3 }); }
+  function rock(x, z, s = 1) { const k = 0.24 * s; W0.geo(rockGeo(Math.floor(rng() * 6), { colors: false }), M.stoneS, x, 0.05 * s, z, { sx: k, sy: k, sz: k, ry: rng() * 6 }); }
   // 停着的小车（静态）
   function parkedCar(x, z, ry, color) {
     const P = at(x, z, ry);
@@ -306,23 +307,21 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     // 西北角的小山：山上有石阶通到亭子，山脚有石头和松树
     const hx = -OUT_W + 2.2, hz = -OUT_D + 2.0;
     const [, H] = spot(root, hx, hz);
-    const hill = H.add(new THREE.Mesh(new THREE.DodecahedronGeometry(2.2, 1), std('#6fae5a', { flatShading: true })), 0, 0, 0);
-    hill.scale.set(1, 0.75, 0.9);
-    const cliff = H.add(new THREE.Mesh(new THREE.DodecahedronGeometry(1.0, 0), std('#9c968a', { flatShading: true })), 0.9, 0.6, 0.6);
-    cliff.scale.set(1, 0.7, 1);
+    const hill = H.add(makeHill(2.3, 1.62, 5), 0, 0, 0);
+    hill.scale.z = 0.9;
+    H.add(makeRock(1.0, 3), 0.95, 0.35, 0.65);
+    H.add(makeRock(0.55, 4), -1.0, 0.25, 0.9);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) H.cyl(0.03, 0.03, 0.4, std('#b8382a'), sx * 0.22, 1.55, sz * 0.22, 6);
     roofCN(H, 0.5, 0.5, 0.3, std('#3e4b5e'), 1.95);
+    const surf = (x, z) => 1.62 * Math.sqrt(Math.max(0, 1 - ((x / 2.3) ** 2 + (z / (2.3 * 0.9)) ** 2)));   // 山丘表面的高度
     const HB = at(hx, hz);
     for (let k = 0; k < 9; k++) {
       const a = -0.4 + k * 0.17, r = 2.0 - k * 0.2;
-      HB.box(0.3, 0.05, 0.16, M.stone, Math.sin(a) * r * 0.5 - 0.2, Math.max(0, 1.65 - r * 0.78), Math.cos(a) * r * 0.9, { ry: a });
+      { const sx = Math.sin(a) * r * 0.5 - 0.2, sz = Math.cos(a) * r * 0.9; HB.box(0.3, 0.07, 0.16, M.stone, sx, Math.max(0, surf(sx, sz) - 0.04), sz, { ry: a }); }
     }
-    const pine = std('#2f6b3e', { flatShading: true });
     [[-1.2, 0.2, 0.8], [-0.6, -1.1, 0.9], [1.0, -0.8, 0.7], [-1.4, -0.6, 0.6], [0.4, 1.2, 0.6]].forEach(([x, z, s]) => {
-      const y = Math.max(0, 1.6 - Math.hypot(x, z) * 0.62);
-      HB.cyl(0.04 * s, 0.05 * s, 0.25 * s, M.wood, x, y, z, 5);
-      HB.cone(0.35 * s, 0.6 * s, pine, x, y + 0.2 * s, z, 7);
-      HB.cone(0.26 * s, 0.5 * s, pine, x, y + 0.5 * s, z, 7);
+      const y = surf(x, z);
+      const t = makeTree('pine', Math.floor(rng() * 3)); t.scale.setScalar(s * 1.05); H.add(t, x, y - 0.04, z);
     });
     for (let k = 0; k < 6; k++) rock(hx + Math.cos(k) * 2.4, hz + Math.sin(k) * 2.0, 0.8 + rng());
     reserve(-OUT_W, -OUT_D, -OUT_W + 4.6, -OUT_D + 4.2);

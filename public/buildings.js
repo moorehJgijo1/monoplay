@@ -8,6 +8,7 @@ import { buildModern } from './bld-modern.js';
 import { buildChinese } from './bld-chinese.js';
 import { buildSeaside } from './bld-seaside.js';
 import { buildFairy } from './bld-fairy.js';
+import { makePalm } from './nature.js';
 
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, ...extra });
@@ -481,31 +482,10 @@ export function emptyDecor(style) {
   return g;
 }
 
-// 椰子树（海滨片区的绿化）
+// 椰子树（海滨片区的绿化）：模型在 nature.js
 export function palmTree(s = 1) {
-  const p = new THREE.Group();
-  const trunk = std('#9b6b3d'), frond = std('#3fae49', { flatShading: true, side: THREE.DoubleSide });
-  let px = 0, py = 0;
-  for (let i = 0; i < 6; i++) {
-    const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.07 - i * 0.006, 0.08 - i * 0.006, 0.3, 7), trunk);
-    seg.position.set(px, py + 0.15, 0);
-    seg.rotation.z = -i * 0.07;
-    seg.castShadow = true;
-    p.add(seg);
-    px += Math.sin(i * 0.07) * 0.3; py += Math.cos(i * 0.07) * 0.28;
-  }
-  for (let i = 0; i < 7; i++) {
-    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.2), frond);
-    f.geometry.translate(0.37, 0, 0);
-    const holder = new THREE.Group();
-    holder.position.set(px, py + 0.05, 0);
-    holder.rotation.y = i / 7 * Math.PI * 2;
-    f.rotation.set(Math.PI / 2, -0.35, 0);
-    f.castShadow = true;
-    holder.add(f);
-    p.add(holder);
-  }
-  p.scale.setScalar(s);
+  const p = makePalm(Math.floor(Math.random() * 4));
+  p.scale.setScalar(s * 1.15);
   return p;
 }
 

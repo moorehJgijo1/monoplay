@@ -9,6 +9,7 @@ import { buildCharacter } from './characters.js';
 import { buildDistricts } from './districts.js';
 import { makeBuilding, lotMaterials, emptyDecor, palmTree } from './buildings.js';
 import { buildSuburbs } from './suburbs.js';
+import { makeTree, makeBush, makeHill } from './nature.js';
 
 const U = 2; // 相邻路口的间距
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
@@ -287,39 +288,15 @@ export function createBoard3D(container, E, opts = {}) {
     return best;
   }
 
-  // 树：圆冠阔叶树和两层的松树，颜色略有变化
-  const trunkMat = std('#8b5a2b'), leafMats = ['#3fae49', '#57c75e', '#2e8b57', '#6bcf63'].map(c => std(c, { flatShading: true }));
-  const pineMats = ['#2f8f5b', '#3a9e66', '#277a4e'].map(c => std(c, { flatShading: true }));
-  const trunkGeo = new THREE.CylinderGeometry(0.08, 0.12, 0.6, 6), leafGeo = new THREE.IcosahedronGeometry(0.45, 0);
-  const pineGeos = [new THREE.ConeGeometry(0.5, 0.8, 7), new THREE.ConeGeometry(0.36, 0.65, 7)];
+  // 树：噪声扰动的圆冠阔叶树、层层下垂的松树、弯曲的椰子树（nature.js），每种有几个变体
   const onIsland = (x, z, pad = 1) => Math.abs(x) < ISLE_W - pad && Math.abs(z) < ISLE_D - pad;
   // kind：'pine' 松树、'round' 阔叶树、'palm' 椰子树；不传就随机松树或阔叶树
   function tree(x, z, s = 1, kind) {
-    const g = new THREE.Group();
-    if (kind === 'palm') {
-      g.add(palmTree(1.1));
-      g.rotation.y = rng() * Math.PI * 2;
-      g.position.set(x, 0, z);
-      g.scale.setScalar(s);
-      scene.add(g);
-      return g;
-    }
-    const t = new THREE.Mesh(trunkGeo, trunkMat);
-    t.position.y = 0.3;
-    g.add(t);
-    if (kind === 'pine' || (!kind && rng() < 0.35)) {
-      const mat = pineMats[Math.floor(rng() * pineMats.length)];
-      pineGeos.forEach((geo, k) => { const c = new THREE.Mesh(geo, mat); c.position.y = 0.85 + k * 0.45; g.add(c); });
-    } else {
-      const l = new THREE.Mesh(leafGeo, leafMats[Math.floor(rng() * leafMats.length)]);
-      l.position.y = 0.85;
-      l.scale.set(1, 1.25, 1);
-      l.rotation.y = rng() * Math.PI;
-      g.add(l);
-    }
-    g.traverse(m => { m.castShadow = true; });
+    const k = kind === 'palm' ? 'palm' : (kind === 'pine' || (!kind && rng() < 0.35)) ? 'pine' : 'round';
+    const g = makeTree(k, Math.floor(rng() * 4));
+    g.rotation.y = rng() * Math.PI * 2;
     g.position.set(x, 0, z);
-    g.scale.setScalar(s);
+    g.scale.setScalar(k === 'palm' ? s * 1.15 : s);
     scene.add(g);
     return g;
   }
@@ -329,7 +306,7 @@ export function createBoard3D(container, E, opts = {}) {
   const TREE_KIND = { old: 'pine', beach: 'palm', cbd: 'round', fun: 'round' };
   const themedTree = (x, z, s) => tree(x, z, s, TREE_KIND[styleAt(x, z)]);
   // 花丛：一小撮彩色小球
-  const flowerGeo = new THREE.IcosahedronGeometry(0.09, 0);
+  const flowerGeo = new THREE.IcosahedronGeometry(0.09, 2);
   const flowerMats = ['#ff7aa2', '#ffd43b', '#ffffff', '#c084fc', '#ff8a4c'].map(c => std(c));
   function flowers(x, z) {
     const mat = flowerMats[Math.floor(rng() * flowerMats.length)];
@@ -340,7 +317,6 @@ export function createBoard3D(container, E, opts = {}) {
     }
   }
   // 路边只种矮灌木，离路远的地方才种树；镜头一侧（南边）留空，免得挡住视线
-  const bushGeo = new THREE.IcosahedronGeometry(0.28, 0);
   const nearRoad = (x, z) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => occupied.has((x + dx) + ',' + (z + dz)));
   for (let z = -6; z < MAP_H + 6; z++) {
     for (let x = -6; x < MAP_W + 6; x++) {
@@ -352,10 +328,10 @@ export function createBoard3D(container, E, opts = {}) {
       if (!onIsland(p.x, p.z, 0.8) || suburbs.blocked(p.x, p.z)) continue;
       if (inside || nearRoad(x, z)) {
         if (rng() < 0.55) {
-          const b = new THREE.Mesh(bushGeo, leafMats[Math.floor(rng() * leafMats.length)]);
-          b.position.set(p.x + (rng() - 0.5) * U * 0.5, 0.2, p.z + (rng() - 0.5) * U * 0.5);
-          b.scale.set(1, 0.8, 1);
-          b.castShadow = true;
+          const b = makeBush(Math.floor(rng() * 4));
+          b.position.set(p.x + (rng() - 0.5) * U * 0.5, 0.0, p.z + (rng() - 0.5) * U * 0.5);
+          b.scale.setScalar(0.9 + rng() * 0.3);
+          b.rotation.y = rng() * 6.28;
           scene.add(b);
         }
         if (rng() < 0.3) flowers(p.x + (rng() - 0.5) * U * 0.5, p.z + (rng() - 0.5) * U * 0.5);
@@ -381,14 +357,14 @@ export function createBoard3D(container, E, opts = {}) {
     const s = 2.5 + rng() * 4;
     const sand = new THREE.Mesh(new THREE.CylinderGeometry(s * 1.15, s * 1.3, 0.5, 18), isleSand);
     sand.position.set(x, -0.6, z);
-    const hill = new THREE.Mesh(new THREE.SphereGeometry(s, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), isleTop);
+    const hill = makeHill(s, s, k + 1, { sand: true });
     hill.scale.y = 0.35 + rng() * 0.5;
     hill.position.set(x, -0.4, z);
     scene.add(sand, hill);
     // 树长在山坡上：按离岛心的距离算出坡面高度
     for (let t = 0; t < 4; t++) {
       const dx = (rng() - 0.5) * s, dz = (rng() - 0.5) * s, d = Math.min(1, Math.hypot(dx, dz) / s);
-      tree(x + dx, z + dz, 1.2 + rng()).position.y = -0.5 + s * hill.scale.y * Math.sqrt(1 - d * d);
+      tree(x + dx, z + dz, 1.2 + rng()).position.y = -0.56 + s * hill.scale.y * Math.sqrt(1 - d * d);
     }
   }
   // 中央公园的喷泉
