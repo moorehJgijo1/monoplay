@@ -55,12 +55,15 @@ const GROUNDS = {
     g.fillStyle = '#f0dca8'; g.fillRect(0, 0, w, h);
     for (let k = 0; k < 260; k++) { g.fillStyle = Math.random() < 0.5 ? '#e4cb8f' : '#fbecc4'; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
   }, [3, 3]),
-  fun: canvasTex(128, 128, (g, w, h) => {
-    g.fillStyle = '#9ad97a'; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#f6e2c4';
-    g.fillRect(0, 54, w, 20); g.fillRect(54, 0, 20, h);
-    g.fillStyle = '#ffb3c7';
-    for (let k = 0; k < w; k += 16) { g.fillRect(k, 54, 8, 3); g.fillRect(k + 8, 71, 8, 3); }
+  // 游乐园：奶油色的方砖地，中间十字形的粉色小路（不再是草地，和周围的石砖广场连成一片）
+  fun: canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#f3e6cd'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#e2d1ae'; g.lineWidth = 3;
+    for (let k = 0; k <= w; k += 32) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, h); g.stroke(); g.beginPath(); g.moveTo(0, k); g.lineTo(w, k); g.stroke(); }
+    g.fillStyle = '#ffd1dd';
+    g.fillRect(0, 104, w, 48); g.fillRect(104, 0, 48, h);
+    g.fillStyle = '#fff1f5';
+    for (let k = 0; k < w; k += 32) { g.fillRect(k, 124, 16, 8); g.fillRect(124, k, 8, 16); }
   }, [2, 2]),
 };
 

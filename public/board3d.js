@@ -229,6 +229,45 @@ export function createBoard3D(container, E, opts = {}) {
     scene.add(m);
   });
 
+  // ---------- 广场：整个棋盘范围铺石砖，不让草地从格子之间露出来 ----------
+  const plaza = (() => {
+    const p0 = world(0, 0), p1 = world(MAP_W - 1, MAP_H - 1);
+    const w = p1.x - p0.x + SW * 2, d = p1.z - p0.z + SW * 2, cx = (p0.x + p1.x) / 2, cz = (p0.z + p1.z) / 2;
+    // 暖灰色的方砖：每块略有深浅，缝隙里一点阴影，大小块交错
+    const { ctx: g, tex } = makeCanvas(512, 512);
+    g.fillStyle = '#cfc8b8'; g.fillRect(0, 0, 512, 512);
+    const rr = (() => { let t = 77; return () => { t = (Math.imul(t, 1664525) + 1013904223) >>> 0; return t / 4294967296; }; })();
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+      const v = 226 + Math.floor(rr() * 18), x = i * 128, y = j * 128;
+      g.fillStyle = `rgb(${v},${v - 5},${v - 17})`;
+      g.fillRect(x + 3, y + 3, 122, 122);
+      g.fillStyle = 'rgba(255,255,255,.28)'; g.fillRect(x + 3, y + 3, 122, 4); g.fillRect(x + 3, y + 3, 4, 122);
+      g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x + 3, y + 121, 122, 4); g.fillRect(x + 121, y + 3, 4, 122);
+      for (let k = 0; k < 16; k++) { g.fillStyle = rr() > 0.5 ? 'rgba(120,108,88,.16)' : 'rgba(255,255,255,.2)'; g.fillRect(x + 6 + rr() * 112, y + 6 + rr() * 112, 2 + rr() * 3, 2 + rr() * 3); }
+    }
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(w / 2.4, d / 2.4);
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.28, 0.1, d + 0.28), std('#e4ddcf'));
+    rim.position.set(cx, -0.042, cz);
+    rim.receiveShadow = true;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.82 }));
+    top.position.set(cx, -0.038, cz);
+    top.receiveShadow = true;
+    scene.add(rim, top);
+    return { x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 };
+  })();
+  const onPlaza = (x, z, pad = 0) => x > plaza.x0 + pad && x < plaza.x1 - pad && z > plaza.z0 + pad && z < plaza.z1 - pad;
+  // 花坛：石砌矮围 + 泥土，铺装路面上的灌木、花、树都种在里面
+  const planterGeo = new THREE.CylinderGeometry(1, 1.06, 0.1, 28), soilGeo = new THREE.CircleGeometry(0.88, 28);
+  const planterMat = std('#d9d2c0', { roughness: 0.8 }), soilMat = std('#6b4a2a', { roughness: 1 });
+  function planter(x, z, r) {
+    const b = new THREE.Mesh(planterGeo, planterMat);
+    b.position.set(x, 0.05, z); b.scale.set(r, 1, r); b.castShadow = true; b.receiveShadow = true;
+    const so = new THREE.Mesh(soilGeo, soilMat);
+    so.rotation.x = -Math.PI / 2; so.position.set(x, 0.101, z); so.scale.set(r, r, 1);
+    scene.add(b, so);
+  }
+
   // 地产地块的朝向：朝向路网外侧或街区内部的空地，且不和别的地块重叠
   const occupied = new Set(BOARD.map(c => c.x + ',' + c.z));
   const usedLots = new Set();
@@ -327,15 +366,17 @@ export function createBoard3D(container, E, opts = {}) {
       const p = world(x, z);
       if (!onIsland(p.x, p.z, 0.8) || suburbs.blocked(p.x, p.z)) continue;
       if (inside || nearRoad(x, z)) {
+        const paved = onPlaza(p.x, p.z);
         if (rng() < 0.55) {
           const b = makeBush(Math.floor(rng() * 4));
-          b.position.set(p.x + (rng() - 0.5) * U * 0.5, 0.0, p.z + (rng() - 0.5) * U * 0.5);
+          b.position.set(p.x + (rng() - 0.5) * U * 0.5, paved ? 0.09 : 0.0, p.z + (rng() - 0.5) * U * 0.5);
+          if (paved) planter(b.position.x, b.position.z, 0.36);
           b.scale.setScalar(0.9 + rng() * 0.3);
           b.rotation.y = rng() * 6.28;
           scene.add(b);
         }
-        if (rng() < 0.3) flowers(p.x + (rng() - 0.5) * U * 0.5, p.z + (rng() - 0.5) * U * 0.5);
-        if (inside && !nearRoad(x, z)) themedTree(p.x, p.z, 0.8);
+        if (rng() < 0.3) { const fx = p.x + (rng() - 0.5) * U * 0.5, fz = p.z + (rng() - 0.5) * U * 0.5; if (paved) planter(fx, fz, 0.5); flowers(fx, fz); }
+        if (inside && !nearRoad(x, z)) { const t = themedTree(p.x, p.z, 0.8); if (paved) { planter(p.x, p.z, 0.46); t.position.y = 0.09; } }
         continue;
       }
       // 镜头一侧（南边）只种花和矮树，免得挡住马路
