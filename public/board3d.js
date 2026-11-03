@@ -22,14 +22,17 @@ const LEVEL_COLORS = { glass: '#8fd0ff', wall: '#fbf8f1' };
 function easeOutBack(t) { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 
-function makeCanvas(w, h) {
+// k：分辨率倍数。画布实际是 w*k × h*k，但绘制坐标仍按 w × h 写（ctx 已经放大过）
+function makeCanvas(w, h, k = 1) {
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
+  c.width = w * k;
+  c.height = h * k;
+  const ctx = c.getContext('2d');
+  if (k !== 1) ctx.scale(k, k);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return { canvas: c, ctx: c.getContext('2d'), tex };
+  tex.anisotropy = 16;
+  return { canvas: c, ctx, tex };
 }
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
@@ -45,7 +48,7 @@ const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, rough
 const emojiCache = new Map();
 function emojiTexture(emoji) {
   if (emojiCache.has(emoji)) return emojiCache.get(emoji);
-  const { ctx, tex } = makeCanvas(128, 128);
+  const { ctx, tex } = makeCanvas(128, 128, 2);
   ctx.font = `96px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -87,10 +90,13 @@ export function createBoard3D(container, E, opts = {}) {
 
   // ---------- 场景基础 ----------
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // 至少按 2 倍分辨率渲染（普通屏幕上等于超采样抗锯齿），高清屏最高 3 倍
+  renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio || 1, 2), 3));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -106,6 +112,15 @@ export function createBoard3D(container, E, opts = {}) {
     return tex;
   })();
   scene.fog = new THREE.Fog('#bfe6fb', 70, 160);
+  // 环境反射：把天空渐变做成环境贴图，金属、玻璃、水面都会映出天空，立体感更强
+  {
+    const pm = new THREE.PMREMGenerator(renderer);
+    const sky = scene.background.clone();
+    sky.mapping = THREE.EquirectangularReflectionMapping;
+    sky.needsUpdate = true;
+    scene.environment = pm.fromEquirectangular(sky).texture;
+    pm.dispose();
+  }
   const camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -116,13 +131,15 @@ export function createBoard3D(container, E, opts = {}) {
   controls.maxPolarAngle = 1.25;
   controls.minPolarAngle = 0.35;
 
-  scene.add(new THREE.HemisphereLight('#ffffff', '#7a9a5a', 1.1));
+  scene.add(new THREE.HemisphereLight('#ffffff', '#7a9a5a', 0.75));
   const sun = new THREE.DirectionalLight('#fff4e0', 1.8);
   sun.position.set(-18, 30, 14);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.radius = 2.5;
+  sun.shadow.normalBias = 0.03;
   Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 20, bottom: -20, near: 1, far: 90 });
-  sun.shadow.bias = -0.0005;
+  sun.shadow.bias = -0.0003;
   scene.add(sun);
 
   const world = (x, z) => new THREE.Vector3((x - (MAP_W - 1) / 2) * U, 0, (z - (MAP_H - 1) / 2) * U);
@@ -165,7 +182,7 @@ export function createBoard3D(container, E, opts = {}) {
   roundedSlab(ISLE_W + 1.6, ISLE_D + 1.6, 6.5, 0.6, [std('#f1dca6', { roughness: 1 }), std('#e2c68a')], -0.55); // 沙滩
   // 海面：带波纹的贴图，主循环里慢慢平移
   const waterTex = (() => {
-    const { ctx, tex } = makeCanvas(256, 256);
+    const { ctx, tex } = makeCanvas(256, 256, 2);
     ctx.fillStyle = '#3fb6dd';
     ctx.fillRect(0, 0, 256, 256);
     ctx.strokeStyle = 'rgba(255,255,255,.35)';
@@ -391,7 +408,7 @@ export function createBoard3D(container, E, opts = {}) {
   const tileGeo = new THREE.BoxGeometry(TILE, 0.17, TILE);
   const tileSide = std('#d8cdb4');
   const tiles = BOARD.map((c, i) => {
-    const top = makeCanvas(256, 256);
+    const top = makeCanvas(256, 256, 4);
     const mesh = new THREE.Mesh(tileGeo, [tileSide, tileSide, new THREE.MeshStandardMaterial({ map: top.tex, roughness: 0.6 }), tileSide, tileSide, tileSide]);
     const p = cellPos(i);
     mesh.position.set(p.x, 0.215, p.z);
@@ -502,7 +519,7 @@ export function createBoard3D(container, E, opts = {}) {
 
   // 待售牌：中性的木牌，所有空地共用一张贴图
   const saleMats = (() => {
-    const { ctx, tex } = makeCanvas(128, 64);
+    const { ctx, tex } = makeCanvas(128, 64, 3);
     ctx.fillStyle = '#ecdcb8';
     ctx.fillRect(0, 0, 128, 64);
     ctx.strokeStyle = '#8b5a2b';
@@ -861,7 +878,7 @@ export function createBoard3D(container, E, opts = {}) {
   const PIP_POS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
   const faceMats = [null, 1, 2, 3, 4, 5, 6].map(v => {
     if (!v) return null;
-    const { ctx: g, tex } = makeCanvas(128, 128);
+    const { ctx: g, tex } = makeCanvas(128, 128, 3);
     g.fillStyle = '#fbfbf8';
     g.fillRect(0, 0, 128, 128);
     PIP_POS[v].forEach(k => {

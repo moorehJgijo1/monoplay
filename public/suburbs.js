@@ -481,8 +481,7 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
       parkedCar(x + 0.7, z + 0.45, Math.PI / 2, CAR_COLORS[(k * 3) % CAR_COLORS.length]);
       bush(x - 0.75, z + 0.55, 0.8);
       bush(x - 0.45, z + 0.6, 0.7, M.leaf2);
-      const b = makeBuilding('cbd', 1 + (k % 2), roofs[k % roofs.length]);
-      b.children.slice(-2).forEach(m => b.remove(m)); // 去掉地主小旗子
+      const b = makeBuilding('cbd', 1 + (k % 2), roofs[k % roofs.length], { flag: false }); // 不插地主小旗子
       b.position.set(x - 0.2, 0.03, z - 0.15);
       b.scale.setScalar(0.85);
       root.add(b);
@@ -533,8 +532,7 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
     const roofs = ['#1c7ed6', '#22b8cf', '#f59f00', '#e64980', '#2f9e44'];
     W0.box(0.35, 0.02, 7.6, M.path, midW + 1.6, 0, 3.4);
     [[0.3, 0], [2.2, 1], [4.1, 2], [6.0, 1]].forEach(([z, lv], k) => {
-      const b = makeBuilding('beach', lv, roofs[k]);
-      b.children.slice(-2).forEach(m => b.remove(m));
+      const b = makeBuilding('beach', lv, roofs[k], { flag: false });
       b.position.set(midW + 0.55, 0, z);
       b.rotation.y = Math.PI / 2;
       root.add(b);

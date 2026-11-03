@@ -3,6 +3,11 @@
 // 每套都有 0~5 级：等级越高越高大。屋顶、遮阳篷、旗子等用地主的颜色，远看就能分清是谁的楼。
 // 局部坐标里 +z 是正面（朝马路），占地不超过 1.5 × 1.5。
 import * as THREE from 'three';
+import { mkit, mat as mmat, TEX as MTEX } from './modeling.js';
+import { buildModern } from './bld-modern.js';
+import { buildChinese } from './bld-chinese.js';
+import { buildSeaside } from './bld-seaside.js';
+import { buildFairy } from './bld-fairy.js';
 
 const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, ...extra });
@@ -364,13 +369,48 @@ function fairy(k, level, roof) {
 
 const BUILDERS = { old: chinese, cbd: modern, beach: seaside, fun: fairy };
 
+// 新版建模（modeling.js 的零件箱，倒角 + 合并网格）已经完成的风格；其余风格还用上面的旧造型
+const NEW_BUILDERS = { cbd: buildModern, old: buildChinese, beach: buildSeaside, fun: buildFairy };
+
+// 飘动的小旗子：旗杆 + 带褶皱的旗面（地主颜色）
+function pennant(k, accent, x, z, h = 0.95) {
+  k.cyl(0.018, 0.022, h, mmat('#8d98a5', { metalness: 0.7, roughness: 0.3 }), x, 0, z, 8);
+  k.ball(0.032, mmat('#e8b630', { metalness: 0.8, roughness: 0.25 }), x, h + 0.02, z);
+  const geo = new THREE.PlaneGeometry(0.42, 0.26, 12, 2);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, Math.sin((p.getX(i) + 0.21) * 11) * 0.025 * (p.getX(i) + 0.21) * 3);
+  geo.computeVertexNormals();
+  const cloth = new THREE.MeshStandardMaterial({ color: accent.color, roughness: 0.6, side: THREE.DoubleSide });
+  k.geo(geo, cloth, x + 0.23, h - 0.15, z, undefined, undefined, [0.42, 0.26, 0.05]);
+}
+
 // 造一座楼：style 是片区风格，level 0~5，color 是地主颜色
-export function makeBuilding(style, level, color) {
+// opts.flag = false 时不插地主小旗子（郊区的装饰房子用）
+export function makeBuilding(style, level, color, opts = {}) {
   const g = new THREE.Group();
+  const nb = NEW_BUILDERS[style];
+  if (nb) {
+    const k = mkit(g);
+    const roof = mmat(color, { map: MTEX.shingle, tile: 0.8, roughness: 0.55 });
+    const accent = mmat(color, { roughness: 0.45 });
+    const blinks = [];
+    const ctx = { roof, accent, color, blink: (x, y, z) => blinks.push([x, y, z]) };
+    const top = nb(k, level, ctx);
+    if (opts.flag !== false) pennant(k, accent, 0.64, 0.64);
+    k.finish();
+    blinks.forEach(([x, y, z]) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), M.light);
+      m.position.set(x, y, z);
+      m.userData.blink = true;
+      g.add(m);
+    });
+    g.userData.top = top;
+    return g;
+  }
   const roof = std(color, { roughness: 0.5 });
   const k = kit(g);
   const top = (BUILDERS[style] || modern)(k, level, roof);
-  flag(k, roof, 0.64, 0, 0.64);
+  if (opts.flag !== false) flag(k, roof, 0.64, 0, 0.64);
   g.userData.top = top;
   return g;
 }
