@@ -16,10 +16,12 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { makeBuilding, lotMaterials } from './buildings.js';
 import { makeTree, makeBush, makeRock, makeHill } from './nature.js';
+import { THEMES } from './districts.js';
 
 const q = new URLSearchParams(location.search);
 const NATURE = q.get('nature');
-const styles = NATURE ? [] : q.get('style') ? [q.get('style')] : ['cbd', 'old', 'beach', 'fun'];
+const DISTRICT = q.get('district');   // ?district=old|cbd|beach|fun：街区中央的主题景观
+const styles = (NATURE || DISTRICT) ? [] : q.get('style') ? [q.get('style')] : ['cbd', 'old', 'beach', 'fun'];
 const levels = q.get('level') !== null ? [+q.get('level')] : [0, 1, 2, 3, 4, 5];
 const color = q.get('color') || '#e8453c';
 
@@ -80,12 +82,20 @@ if (NATURE) {
   items.forEach((o, i) => { o.position.set((i - (items.length - 1) / 2) * 1.15, 0, 0); scene.add(o); });
   const h = makeHill(2.2, 1.6, 5); h.position.set(0, 0, -5); scene.add(h);
 }
+if (DISTRICT) {
+  const dims = { old: [10, 4], cbd: [8, 4], beach: [8, 6], fun: [8, 6] }[DISTRICT];
+  const th = THEMES.find(t => t.key === DISTRICT), g = new THREE.Group();
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(dims[0] + 1.6, dims[1] + 1.6), new THREE.MeshStandardMaterial({ color: '#d9cfa8', roughness: 0.95 }));
+  pad.rotation.x = -Math.PI / 2; pad.position.y = 0.02; pad.receiveShadow = true; scene.add(pad);
+  th.build(g, dims[0], dims[1], [], {});
+  scene.add(g);
+}
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 400);
 const single = levels.length === 1 && styles.length === 1;
-const dist = +q.get('dist') || (NATURE ? 12 : 0) || (single ? 9 : Math.max(levels.length * SP * 1.25, styles.length * SP * 2.2));
+const dist = +q.get('dist') || (NATURE ? 12 : 0) || (DISTRICT ? 15 : 0) || (single ? 9 : Math.max(levels.length * SP * 1.25, styles.length * SP * 2.2));
 camera.position.set(0, dist * (single ? 0.5 : 0.62), dist);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, single ? 1.2 : 0.6, 0);
+controls.target.set(0, DISTRICT ? 0.3 : single ? 1.2 : 0.6, 0);
 controls.update();
 
 const clock = new THREE.Clock();

@@ -71,7 +71,7 @@ function buildOldTown(g, W, D, amb) {
   const K = kit(g);
   // 七层宝塔：两级石台、每层红柱木格、飞檐翘角，顶上金色塔刹（南侧偏左）
   const pg = new THREE.Group();
-  pg.position.set(-W / 2 + 1.2, 0, D / 2 - 1.2);
+  pg.position.set(-W / 2 + 1.5, 0, -0.4);   // 后排左：宝塔
   g.add(pg);
   const P = kit(pg);
   P.box(1.7, 0.16, 1.7, grey, 0, 0, 0);
@@ -91,7 +91,7 @@ function buildOldTown(g, W, D, amb) {
 
   // 城楼：一段带垛口的青砖城墙，中间拱门，上面一座重檐城楼（南侧中间）
   const gt = new THREE.Group();
-  gt.position.set(-0.1, 0, D / 2 - 0.55);
+  gt.position.set(0.7, 0, -D / 2 + 0.6);    // 后排中：城墙和城楼
   g.add(gt);
   const G = kit(gt);
   const wl = 3.4, wh = 0.62, wd = 0.7;
@@ -125,17 +125,12 @@ function buildOldTown(g, W, D, amb) {
     put(g, new THREE.CylinderGeometry(0.06, 0.06, 0.03, 10), gold, x, yy - 0.12, z, { shadow: false });
     lanterns.push(l);
   };
-  lantern(-0.1 - 0.95, 0.42, D / 2 - 0.55 + wd / 2 + 0.15);
-  lantern(-0.1 + 0.95, 0.42, D / 2 - 0.55 + wd / 2 + 0.15);
-  for (let k = 0; k < 4; k++) {
-    const x = W / 2 - 0.6 - k * 0.75;
-    cyl(g, 0.03, 0.03, 0.9, wood, x, 0, D / 2 - 0.25, 6);
-    lantern(x, 0.98, D / 2 - 0.25);
-  }
+  lantern(0.7 - 0.95, 0.42, -D / 2 + 0.6 + wd / 2 + 0.15);
+  lantern(0.7 + 0.95, 0.42, -D / 2 + 0.6 + wd / 2 + 0.15);
 
   // 牌坊：三间四柱，飞檐屋顶，金匾
   const ar = new THREE.Group();
-  ar.position.set(W / 2 - 1.6, 0, 0.45);
+  ar.position.set(W / 2 - 1.3, 0, 0.55);    // 右侧：牌坊
   g.add(ar);
   const A = kit(ar);
   for (const sx of [-1.5, -0.5, 0.5, 1.5]) { A.cyl(0.07, 0.08, 1.3, red, sx * 0.55, 0, 0, 10); A.box(0.24, 0.16, 0.24, grey, sx * 0.55, 0, 0); }
@@ -150,26 +145,8 @@ function buildOldTown(g, W, D, amb) {
   }
   A.box(0.5, 0.2, 0.04, new THREE.MeshStandardMaterial({ map: plaque }), 0, 0.82, 0.06);
 
-  // 青瓦小院：两座四合院正房 + 院墙
-  const house = (x, z) => {
-    const h = new THREE.Group();
-    h.position.set(x, 0, z);
-    g.add(h);
-    const H = kit(h);
-    H.box(1.2, 0.08, 0.85, grey, 0, 0, 0);
-    H.box(1.05, 0.5, 0.7, wall, 0, 0.08, 0);
-    H.box(0.22, 0.34, 0.02, red, 0, 0.08, 0.36);
-    H.box(0.22, 0.14, 0.02, lattice, -0.33, 0.28, 0.36);
-    H.box(0.22, 0.14, 0.02, lattice, 0.33, 0.28, 0.36);
-    roofCN(H, 1.05, 0.7, 0.3, tile, 0.58);
-  };
-  house(W / 2 - 0.95, -D / 2 + 0.7);
-  house(W / 2 - 2.35, -D / 2 + 0.7);
-  K.box(2.9, 0.3, 0.08, wall, W / 2 - 1.65, 0, -D / 2 + 1.35);
-  K.box(2.96, 0.04, 0.16, tile, W / 2 - 1.65, 0.3, -D / 2 + 1.35);
-
   // 荷花池 + 石拱桥 + 柳树（中间偏后）
-  const px = -0.6, pz = -0.7;
+  const px = 0.2, pz = 0.95;                // 前排中：荷花池
   const pond = put(g, new THREE.CircleGeometry(1, 28), std('#5cc3d6', { roughness: 0.15 }), px, 0.04, pz, { shadow: false, rx: -Math.PI / 2 });
   pond.scale.set(1.25, 0.65, 1);
   const rim = put(g, new THREE.RingGeometry(1, 1.12, 28), grey, px, 0.045, pz, { shadow: false, rx: -Math.PI / 2 });
@@ -201,13 +178,10 @@ function buildOldTown(g, W, D, amb) {
     }
     Wk.ball(0.33, leaf, 0, 1.05, 0).scale.set(1, 0.6, 1);
   };
-  willow(px + 1.55, pz + 0.2);
-  willow(px - 1.6, pz - 0.3);
+  willow(px - 1.7, pz - 0.1);
   // 松树
   const pine = (x, z, s) => { const t = makeTree('pine', Math.floor((x + z) * 7) & 3); t.position.set(x, 0, z); t.scale.setScalar(s * 1.1); g.add(t); };
-  pine(-W / 2 + 0.6, -D / 2 + 0.5, 1.1);
-  pine(-W / 2 + 1.5, -D / 2 + 0.45, 0.9);
-  pine(-W / 2 + 2.3, D / 2 - 0.35, 0.8);
+  pine(-W / 2 + 0.5, D / 2 - 0.5, 1.0);
   amb.push(t => { lanternMat.emissiveIntensity = 0.5 + Math.sin(t * 3) * 0.15; lanterns.forEach((l, k) => { l.rotation.z = Math.sin(t * 1.6 + k) * 0.08; }); });
 }
 
@@ -228,7 +202,7 @@ function buildFinance(g, W, D, amb, api) {
   const frame = std('#2b3442');
   // 证券交易所：古典柱廊 + 三角山花 + 楼顶滚动行情屏
   const ex = new THREE.Group();
-  ex.position.set(-W / 2 + 1.75, 0, D / 2 - 1.15);
+  ex.position.set(0, 0, -0.5);                // 居中：证券交易所
   g.add(ex);
   box(ex, 2.8, 0.12, 1.7, stone, 0, 0, 0);
   box(ex, 2.6, 0.1, 1.55, stone, 0, 0.12, 0.04);
@@ -286,7 +260,7 @@ function buildFinance(g, W, D, amb, api) {
   amb.push((t, dt) => { tickTex.offset.x = (tickTex.offset.x + dt * 0.06) % 1; });
   // 玻璃塔楼：一座圆塔、一座方塔，颜色和玩家的楼区分开（深蓝、青绿玻璃）
   const tower1 = new THREE.Group();
-  tower1.position.set(W / 2 - 1.0, 0, -D / 2 + 0.9);
+  tower1.position.set(-W / 2 + 0.95, 0, -D / 2 + 0.85);   // 左后角：圆塔
   g.add(tower1);
   cyl(tower1, 0.62, 0.68, 0.3, stone, 0, 0, 0, 20);
   cyl(tower1, 0.5, 0.55, 3.0, glass, 0, 0.3, 0, 20);
@@ -296,7 +270,7 @@ function buildFinance(g, W, D, amb, api) {
   cyl(tower1, 0.02, 0.03, 0.7, frame, 0, 3.7, 0, 6);
   const beacon = put(tower1, new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff3b3b' }), 0, 4.42, 0, { shadow: false });
   const tower2 = new THREE.Group();
-  tower2.position.set(W / 2 - 2.35, 0, -D / 2 + 0.75);
+  tower2.position.set(W / 2 - 1.0, 0, -D / 2 + 0.8);      // 右后角：方塔
   g.add(tower2);
   box(tower2, 1.0, 2.5, 0.9, glass2, 0, 0, 0);
   box(tower2, 0.75, 0.9, 0.7, glass2, 0.08, 2.5, 0);
@@ -304,8 +278,8 @@ function buildFinance(g, W, D, amb, api) {
   box(tower2, 0.8, 0.12, 0.75, gold, 0.08, 3.4, 0);
   // 金牛雕像
   const bull = new THREE.Group();
-  bull.position.set(W / 2 - 1.1, 0, D / 2 - 0.55);
-  bull.rotation.y = -0.5;
+  bull.position.set(-2.4, 0, D / 2 - 0.65);
+  bull.rotation.y = 0.5;
   g.add(bull);
   box(bull, 0.7, 0.25, 0.5, stone, 0, 0, 0);
   box(bull, 0.55, 0.26, 0.24, gold, 0, 0.42, 0);
@@ -316,7 +290,6 @@ function buildFinance(g, W, D, amb, api) {
   // 玻璃金字塔（交易所后面，矮矮的，不挡住后面的马路）
   const pyr = new THREE.Group();
   pyr.position.set(-W / 2 + 1.1, 0, -D / 2 + 0.8);
-  g.add(pyr);
   box(pyr, 1.2, 0.1, 1.2, stone, 0, 0, 0);
   put(pyr, new THREE.ConeGeometry(0.72, 0.85, 4), glass3, 0, 0.52, 0, { ry: Math.PI / 4 });
   const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.ConeGeometry(0.725, 0.855, 4)), new THREE.LineBasicMaterial({ color: '#2b3442' }));
@@ -324,7 +297,7 @@ function buildFinance(g, W, D, amb, api) {
   edges.rotation.y = Math.PI / 4;
   pyr.add(edges);
   // 广场喷泉：两层水池，水柱上下跳动
-  const fx = 0.55, fz = D / 2 - 0.85;
+  const fx = 0, fz = D / 2 - 0.62;
   cyl(g, 0.62, 0.66, 0.14, stone, fx, 0, fz, 24);
   put(g, new THREE.CircleGeometry(0.55, 24), std('#6fd0f0', { roughness: 0.1 }), fx, 0.141, fz, { shadow: false, rx: -Math.PI / 2 });
   cyl(g, 0.08, 0.1, 0.4, stone, fx, 0.14, fz, 10);
@@ -335,12 +308,12 @@ function buildFinance(g, W, D, amb, api) {
   amb.push(t => { const k = 1 + Math.sin(t * 5) * 0.12; jet.scale.set(1, k, 1); jet.position.y = 0.6 + 0.3 * k; spray.scale.set(1, 0.6 + Math.sin(t * 5 + 1) * 0.1, 1); });
   // 路灯和小树花坛
   const leaf = std('#4caf50', { flatShading: true });
-  for (const [x, z] of [[-W / 2 + 2.5, -D / 2 + 0.4], [0.3, -D / 2 + 0.45], [W / 2 - 0.3, D / 2 - 1.6]]) {
+  for (const [x, z] of [[2.4, D / 2 - 0.65]]) {
     box(g, 0.45, 0.2, 0.45, stone, x, 0, z);
     const bsh = makeBush(Math.floor(x * 3) & 3); bsh.position.set(x, 0.33, z); bsh.scale.setScalar(1.15); g.add(bsh);
   }
   const lampMat = new THREE.MeshStandardMaterial({ color: '#fff7d6', emissive: '#ffd56b', emissiveIntensity: 0.5 });
-  for (const x of [-0.6, 1.7, 3.0]) {
+  for (const x of [-1.3, 1.3]) {
     cyl(g, 0.025, 0.035, 0.9, frame, x, 0, D / 2 - 0.2, 6);
     box(g, 0.2, 0.03, 0.04, frame, x + 0.08, 0.88, D / 2 - 0.2);
     put(g, new THREE.SphereGeometry(0.06, 8, 6), lampMat, x + 0.17, 0.84, D / 2 - 0.2, { shadow: false });
@@ -397,7 +370,7 @@ function buildBeach(g, W, D, amb) {
   }));
   // 灯塔：南侧，红白相间，顶上的灯光会转
   const lh = new THREE.Group();
-  lh.position.set(W / 2 - 0.85, 0, D / 2 - 0.9);
+  lh.position.set(W / 2 - 0.9, 0, -D / 2 + 0.95);   // 右后：灯塔
   g.add(lh);
   { const r = makeRock(0.72, 2); r.scale.set(0.86, 0.62, 0.86); r.position.set(0, 0.17, 0); lh.add(r); }
   const stripes = ['#e8452c', '#ffffff'];
@@ -419,10 +392,8 @@ function buildBeach(g, W, D, amb) {
   amb.push((t, dt) => { beamPivot.rotation.y += dt * 1.2; });
   // 椰子树
   const palm = (x, z, lean, s) => { const p = makePalm(Math.floor(x * 5 + z * 3) & 3); p.position.set(x, 0, z); p.rotation.y = lean; p.scale.setScalar(s * 1.15); g.add(p); };
-  palm(W / 2 - 0.75, -D / 2 + 0.85, 0.4, 1.0);
-  palm(W / 2 - 1.5, -D / 2 + 0.5, 2.2, 1);
   palm(-W / 2 + 0.5, D / 2 - 0.5, -0.8, 1.05);
-  palm(W / 2 - 2.2, D / 2 - 0.45, 1.4, 0.9);
+  palm(W / 2 - 0.55, D / 2 - 1.2, 1.4, 0.95);
   // 沙滩伞和浴巾
   const umbrella = (x, z, c1, c2) => {
     cyl(g, 0.02, 0.02, 0.75, std('#eeeeee'), x, 0, z, 5);
@@ -430,7 +401,7 @@ function buildBeach(g, W, D, amb) {
     put(g, new THREE.ConeGeometry(0.42, 0.2, 16, 1, true), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide }), x, 0.8, z);
     box(g, 0.3, 0.01, 0.55, std(c1), x + 0.32, 0.03, z + 0.1, { shadow: false });
   };
-  umbrella(W / 2 - 1.9, -D / 2 + 1.7, '#ff6b6b', '#ffffff');
+  umbrella(W / 2 - 2.0, D / 2 - 0.7, '#ff6b6b', '#ffffff');
   umbrella(-W / 2 + 1.4, D / 2 - 0.6, '#2f80ed', '#ffffff');
   const K = kit(g), plank = std('#b98a55'), post = std('#7a4a20');
   // 木栈桥：从沙滩伸进泻湖
@@ -438,15 +409,6 @@ function buildBeach(g, W, D, amb) {
   K.box(0.4, 0.04, bz0 - bz1, plank, bx, 0.14, (bz0 + bz1) / 2);
   for (let z = bz1 + 0.1; z < bz0; z += 0.42) for (const sx of [-1, 1]) K.cyl(0.025, 0.025, 0.18, post, bx + sx * 0.18, 0, z, 5);
   for (const sx of [-1, 1]) K.box(0.03, 0.04, bz0 - bz1, post, bx + sx * 0.19, 0.3, (bz0 + bz1) / 2);
-  // 一排彩色沙滩小屋（后排右侧）
-  ['#ff8fa3', '#ffd166', '#6ecbf5', '#9be29b'].forEach((c, k) => {
-    const hx = W / 2 - 0.45 - k * 0.62, hz = -D / 2 + 0.45;
-    K.box(0.5, 0.5, 0.5, std(c), hx, 0, hz);
-    for (let i = 0; i < 4; i++) K.box(0.51, 0.025, 0.51, M_WHITE, hx, 0.08 + i * 0.11, hz);
-    const r = K.add(new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.3, 4), M_WHITE), hx, 0.65, hz);
-    r.rotation.y = Math.PI / 4;
-    K.box(0.16, 0.3, 0.02, std('#5a3b1c'), hx, 0, hz + 0.26);
-  });
   // 救生员瞭望台
   const lgx = lx + lw / 2 + 0.75, lgz = lz + 0.35;
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.cyl(0.025, 0.03, 0.9, M_WHITE, lgx + sx * 0.2, 0, lgz + sz * 0.2, 5);
@@ -470,7 +432,7 @@ function buildFunPark(g, W, D, amb) {
   const colors = ['#ff6b6b', '#ffd34d', '#4dabf7', '#51cf66', '#cc5de8', '#ff922b', '#22b8cf', '#f06595'];
   // 摩天轮：南侧，绕 x 轴转，座舱始终保持朝下
   const fw = new THREE.Group();
-  fw.position.set(W / 2 - 1.4, 0, D / 2 - 0.9);
+  fw.position.set(W / 2 - 1.5, 0, -D / 2 + 1.2);   // 后右：摩天轮
   fw.rotation.y = -0.35;
   g.add(fw);
   const R = 1.35, H = 1.75;
@@ -504,7 +466,7 @@ function buildFunPark(g, W, D, amb) {
   amb.push((t, dt) => { wheel.rotation.z += dt * 0.25; cars.forEach(c => { c.rotation.z = -wheel.rotation.z; }); });
   // 旋转木马：条纹圆锥顶，木马上下起伏
   const cr = new THREE.Group();
-  cr.position.set(-W / 2 + 1.25, 0, D / 2 - 1.1);
+  cr.position.set(-W / 2 + 1.7, 0, 1.15);           // 前左：旋转木马
   g.add(cr);
   cyl(cr, 0.95, 1.0, 0.16, std('#ffe8a3'), 0, 0, 0, 24);
   cyl(cr, 0.08, 0.08, 1.2, yellow, 0, 0.16, 0, 10);
@@ -531,7 +493,7 @@ function buildFunPark(g, W, D, amb) {
   amb.push((t, dt) => { spin.rotation.y += dt * 0.7; horses.forEach((h, k) => { h.position.y = 0.5 + Math.sin(t * 2.4 + k * 1.3) * 0.1; }); });
   // 马戏帐篷
   const tent = new THREE.Group();
-  tent.position.set(-W / 2 + 1.0, 0, -D / 2 + 0.9);
+  tent.position.set(W / 2 - 1.55, 0, 1.55);         // 前右：马戏帐篷
   g.add(tent);
   const tentTex = canvasTex(256, 16, (c, w) => { for (let k = 0; k < 12; k++) { c.fillStyle = k % 2 ? '#4dabf7' : '#ffffff'; c.fillRect(k * w / 12, 0, w / 12, 16); } });
   const tentMat = new THREE.MeshStandardMaterial({ map: tentTex });
@@ -542,7 +504,7 @@ function buildFunPark(g, W, D, amb) {
   box(tent, 0.3, 0.4, 0.02, std('#3b2614'), 0, 0, 0.75);
   // 气球：一簇彩色气球上下飘
   const balloons = new THREE.Group();
-  balloons.position.set(W / 2 - 0.6, 0, -D / 2 + 0.7);
+  balloons.position.set(W / 2 - 0.45, 0, 0.3);
   g.add(balloons);
   box(balloons, 0.35, 0.4, 0.3, std('#ffe8a3'), 0, 0, 0);
   for (let k = 0; k < 7; k++) {
@@ -555,7 +517,7 @@ function buildFunPark(g, W, D, amb) {
   }
   amb.push(t => { balloons.children.forEach((c, k) => { if (k) c.position.y += Math.sin(t * 2 + k) * 0.0012; }); balloons.rotation.y = Math.sin(t * 0.5) * 0.2; });
   // 过山车：一圈有起伏的轨道，三节车厢沿着轨道跑，低处快、高处慢
-  const cx = 0.25, cz = -0.45, rx = 1.85, rz = 0.95;
+  const cx = -1.2, cz = -D / 2 + 1.25, rx = 1.65, rz = 0.8;   // 后左：过山车
   const pts = [];
   for (let k = 0; k < 48; k++) {
     const a = k / 48 * Math.PI * 2;
@@ -606,7 +568,7 @@ function buildFunPark(g, W, D, amb) {
     });
   });
   // 乐园大门：两座条纹小塔，中间拱形招牌
-  const gateX = -0.3, gateZ = D / 2 - 0.35;
+  const gateX = 0, gateZ = D / 2 - 0.3;
   const Gk = kit(g);
   const stripe = new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, (c, w, h) => { for (let k = 0; k < 8; k++) { c.fillStyle = k % 2 ? '#ff6b8a' : '#fff4e0'; c.fillRect(0, k * h / 8, w, h / 8); } }) });
   for (const sx of [-1, 1]) turret(Gk, 0.18, 1.0, std('#7048e8'), stripe, gateX + sx * 0.8, 0, gateZ);
@@ -620,8 +582,7 @@ function buildFunPark(g, W, D, amb) {
   Gk.box(1.0, 0.26, 0.05, new THREE.MeshStandardMaterial({ map: sign }), gateX, 1.58, gateZ);
   // 冰淇淋车
   const truck = new THREE.Group();
-  truck.position.set(-0.6, 0, -D / 2 + 0.45);
-  g.add(truck);
+  truck.position.set(-0.6, 0, -D / 2 + 0.45);   // 冰淇淋车：人太挤，不放进场景了
   box(truck, 0.75, 0.4, 0.4, std('#ffc9de'), 0, 0.08, 0);
   box(truck, 0.3, 0.25, 0.38, std('#ffffff'), 0.25, 0.48, 0);
   for (const [wx, wz] of [[0.25, 0.2], [-0.25, 0.2], [0.25, -0.2], [-0.25, -0.2]]) cyl(truck, 0.07, 0.07, 0.05, std('#333'), wx, 0.04, wz, 10, { rx: Math.PI / 2 });
@@ -629,7 +590,7 @@ function buildFunPark(g, W, D, amb) {
   put(truck, new THREE.SphereGeometry(0.09, 10, 8), pink, -0.15, 0.73, 0);
 }
 
-const THEMES = [
+export const THEMES = [
   { key: 'old', name: '古城区', build: buildOldTown },
   { key: 'cbd', name: '金融区', build: buildFinance },
   { key: 'beach', name: '海滨区', build: buildBeach },
