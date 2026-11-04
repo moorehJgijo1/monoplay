@@ -17,11 +17,18 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { makeBuilding, lotMaterials } from './buildings.js';
 import { makeTree, makeBush, makeRock, makeHill } from './nature.js';
 import { THEMES } from './districts.js';
+import { buildAirport, makePlane } from './sub-airport.js';
+import { buildStadium } from './sub-stadium.js';
+import { buildHarbor } from './sub-harbor.js';
+import { buildSouth } from './sub-south.js';
+import { buildPaddies, buildHillPavilion, buildTurbines } from './sub-scenery.js';
 
 const q = new URLSearchParams(location.search);
 const NATURE = q.get('nature');
-const DISTRICT = q.get('district');   // ?district=old|cbd|beach|fun：街区中央的主题景观
-const styles = (NATURE || DISTRICT) ? [] : q.get('style') ? [q.get('style')] : ['cbd', 'old', 'beach', 'fun'];
+const DISTRICT = q.get('district');
+const SUB = q.get('sub');          // ?sub=airport：郊区的主角，单独看
+const subTicks = [];   // ?district=old|cbd|beach|fun：街区中央的主题景观
+const styles = (NATURE || DISTRICT || SUB) ? [] : q.get('style') ? [q.get('style')] : ['cbd', 'old', 'beach', 'fun'];
 const levels = q.get('level') !== null ? [+q.get('level')] : [0, 1, 2, 3, 4, 5];
 const color = q.get('color') || '#e8453c';
 
@@ -90,18 +97,47 @@ if (DISTRICT) {
   th.build(g, dims[0], dims[1], [], {});
   scene.add(g);
 }
+if (SUB === 'airport') {
+  const g = new THREE.Group(); g.position.set(-10, 0, 13); scene.add(g);
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(26, 12), new THREE.MeshStandardMaterial({ color: '#8fd16a', roughness: 1 })); pad.rotation.x = -Math.PI / 2; pad.position.set(0.5, 0.005, 0); scene.add(pad);
+  buildAirport(g, { rz: -15.025, rx0: 3, rx1: 17.125, IW: 22, ID: 18, ticks: subTicks });
+}
+if (SUB === 'stadium') { const pad = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), new THREE.MeshStandardMaterial({ color: '#8fd16a', roughness: 1 })); pad.rotation.x = -Math.PI / 2; pad.position.y = 0.005; scene.add(pad); buildStadium(scene, { x: 0, z: 0 }); }
+if (SUB === 'harbor') {
+  ground.visible = false;
+  const g = new THREE.Group(); g.position.set(24, 0, -3.3); scene.add(g);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: '#3fb6dd', roughness: 0.3 })); sea.rotation.x = -Math.PI / 2; sea.position.set(0, -0.75, 0); scene.add(sea);
+  const isle = new THREE.Mesh(new THREE.BoxGeometry(8, 1, 14), new THREE.MeshStandardMaterial({ color: '#8fd16a' })); isle.position.set(5, -0.5, 0); scene.add(isle);
+  buildHarbor(g, { IW: 22, ID: 18, ticks: subTicks });
+}
+if (SUB === 'south') {
+  ground.visible = false;
+  const g = new THREE.Group(); g.position.set(0, 0, -13.66); scene.add(g);
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(60, 12), new THREE.MeshStandardMaterial({ color: '#3fb6dd', roughness: 0.3 })); sea.rotation.x = -Math.PI / 2; sea.position.set(0, -0.2, 6.5); scene.add(sea);
+  buildSouth(g, { z: 13.66, bandD: 4.125, ID: 18, ticks: subTicks });
+}
+if (SUB === 'scenery') {
+  const g = new THREE.Group(); scene.add(g);
+  buildPaddies(g, { x0: -5.5, x1: -0.3, z0: -1.2, z1: 2.5 });
+  buildHillPavilion(g, { hx: 3.5, hz: 0.6, rng: Math.random });
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(30, 10), new THREE.MeshStandardMaterial({ color: '#3fb6dd' })); sea.rotation.x = -Math.PI / 2; sea.position.set(0, -0.75, -9); scene.add(sea);
+  buildTurbines(g, { IW: -4, ticks: subTicks });
+  g.children.forEach(c => { if (c.position.z === -9 || c.position.z === -1) c.position.z -= 7; });
+}
+if (SUB === 'plane') { const p = makePlane('#e03131'); p.scale.setScalar(4); p.position.y = 1.0; p.rotation.y = 0.6; scene.add(p); }
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 400);
 const single = levels.length === 1 && styles.length === 1;
-const dist = +q.get('dist') || (NATURE ? 12 : 0) || (DISTRICT ? 15 : 0) || (single ? 9 : Math.max(levels.length * SP * 1.25, styles.length * SP * 2.2));
+const dist = +q.get('dist') || (NATURE ? 12 : 0) || (DISTRICT ? 15 : 0) || (SUB ? 15 : 0) || (single ? 9 : Math.max(levels.length * SP * 1.25, styles.length * SP * 2.2));
 camera.position.set(0, dist * (single ? 0.5 : 0.62), dist);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, DISTRICT ? 0.3 : single ? 1.2 : 0.6, 0);
+controls.target.set(0, (DISTRICT || SUB) ? 0.3 : single ? 1.2 : 0.6, 0);
 controls.update();
 
 const clock = new THREE.Clock();
 function loop() {
   const t = clock.getElapsedTime();
   scene.traverse(o => { if (o.userData.blink) o.material.opacity = 1; });
+  subTicks.forEach(f => f(clock.elapsedTime, 0.016));
   controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(loop);

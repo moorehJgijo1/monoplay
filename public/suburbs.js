@@ -8,6 +8,11 @@ import * as THREE from 'three';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { kit, roofCN, makeBuilding, palmTree, FONT } from './buildings.js';
 import { makeTree, makeHill, makeRock, rockGeo, blobGeo } from './nature.js';
+import { buildAirport } from './sub-airport.js';
+import { buildStadium } from './sub-stadium.js';
+import { buildHarbor } from './sub-harbor.js';
+import { buildSouth } from './sub-south.js';
+import { buildPaddies, buildHillPavilion, buildTurbines } from './sub-scenery.js';
 
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05, ...extra });
 function canvasTex(w, h, draw, repeat) {
@@ -205,455 +210,45 @@ export function buildSuburbs(scene, { IW, ID, BW, BD, rng }) {
   {
     // 稻田：田埂围着一块块水田，水面反光，秧苗一丛丛；田间有土路和稻草人
     const x0 = -IN_W + 0.3, x1 = -9.2, z0 = -OUT_D + 0.1, z1 = -IN_D - 0.1;
-    const waters = ['#9fd8c8', '#a9dcb4', '#b9e0a0', '#cfe39a'].map(c => std(c, { roughness: 0.2, metalness: 0.05 }));
-    const tuft = [std('#5aa845', { flatShading: true }), std('#7cc35a', { flatShading: true }), std('#c9b84a', { flatShading: true })];
-    const cw = 1.45, cd = 1.2, gap = 0.14;
-    let fi = 0;
-    for (let x = x0; x + cw <= x1 + 0.01; x += cw + gap) for (let z = z0; z + cd <= z1 + 0.01; z += cd + gap) {
-      const cx = x + cw / 2, cz = z + cd / 2, kind = fi++ % 4;
-      W0.box(cw + gap, 0.07, cd + gap, M.soil, cx, 0, cz);
-      W0.box(cw - 0.06, 0.02, cd - 0.06, waters[kind], cx, 0.07, cz);
-      if (kind !== 3) for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) {
-        W0.cone(0.05, 0.16 + (kind === 2 ? 0.06 : 0), tuft[kind], cx - cw / 2 + 0.17 + i * (cw - 0.34) / 5, 0.08, cz - cd / 2 + 0.17 + j * (cd - 0.34) / 3, 5);
-      }
-    }
-    // 田间土路
-    W0.box(0.24, 0.075, z1 - z0, M.path, x0 + 2 * (cw + gap) - gap / 2, 0, (z0 + z1) / 2);
-    // 稻草人
-    const S = at(x0 + 2.1, z0 + 0.7);
-    S.box(0.04, 0.55, 0.04, M.wood, 0, 0.08, 0);
-    S.box(0.4, 0.03, 0.03, M.wood, 0, 0.45, 0);
-    S.box(0.18, 0.2, 0.08, C('#c0392b'), 0, 0.33, 0);
-    S.ball(0.08, C('#f1d9a7'), 0, 0.62, 0);
-    S.cone(0.14, 0.08, M.hay, 0, 0.67, 0, 10);
+    buildPaddies(root, { x0, x1, z0, z1 });        // 稻田和稻草人：sub-scenery.js
     reserve(x0, z0, x1, z1);
 
     // 西北角的小山：山上有石阶通到亭子，山脚有石头和松树
     const hx = -OUT_W + 2.2, hz = -OUT_D + 2.0;
-    const [, H] = spot(root, hx, hz);
-    const hill = H.add(makeHill(2.3, 1.62, 5), 0, 0, 0);
-    hill.scale.z = 0.9;
-    H.add(makeRock(1.0, 3), 0.95, 0.35, 0.65);
-    H.add(makeRock(0.55, 4), -1.0, 0.25, 0.9);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) H.cyl(0.03, 0.03, 0.4, std('#b8382a'), sx * 0.22, 1.55, sz * 0.22, 6);
-    roofCN(H, 0.5, 0.5, 0.3, std('#3e4b5e'), 1.95);
-    const surf = (x, z) => 1.62 * Math.sqrt(Math.max(0, 1 - ((x / 2.3) ** 2 + (z / (2.3 * 0.9)) ** 2)));   // 山丘表面的高度
-    const HB = at(hx, hz);
-    for (let k = 0; k < 9; k++) {
-      const a = -0.4 + k * 0.17, r = 2.0 - k * 0.2;
-      { const sx = Math.sin(a) * r * 0.5 - 0.2, sz = Math.cos(a) * r * 0.9; HB.box(0.3, 0.07, 0.16, M.stone, sx, Math.max(0, surf(sx, sz) - 0.04), sz, { ry: a }); }
-    }
-    [[-1.2, 0.2, 0.8], [-0.6, -1.1, 0.9], [1.0, -0.8, 0.7], [-1.4, -0.6, 0.6], [0.4, 1.2, 0.6]].forEach(([x, z, s]) => {
-      const y = surf(x, z);
-      const t = makeTree('pine', Math.floor(rng() * 3)); t.scale.setScalar(s * 1.05); H.add(t, x, y - 0.04, z);
-    });
-    for (let k = 0; k < 6; k++) rock(hx + Math.cos(k) * 2.4, hz + Math.sin(k) * 2.0, 0.8 + rng());
+    buildHillPavilion(root, { hx, hz, rng });       // 小山和凉亭：sub-scenery.js
     reserve(-OUT_W, -OUT_D, -OUT_W + 4.6, -OUT_D + 4.2);
 
   }
 
   // ---------- 北边和东北：机场、体育场 ----------
   {
-    const rz = -OUT_D + 0.7, rx0 = 3.0, rx1 = OUT_W - 2.6, rl = rx1 - rx0;
-    // 跑道：沥青、白色中线、两头的入口标记和编号、两边一排跑道灯
-    W0.box(rl, 0.04, 1.1, M.asphalt, (rx0 + rx1) / 2, 0.01, rz);
-    for (let x = rx0 + 1.4; x < rx1 - 1.2; x += 0.8) W0.box(0.4, 0.01, 0.05, M.line, x, 0.05, rz);
-    for (const sx of [-1, 1]) W0.box(rl, 0.01, 0.03, M.line, (rx0 + rx1) / 2, 0.05, rz + sx * 0.5);
-    for (const xe of [rx0 + 0.3, rx1 - 0.3]) for (let k = -3; k <= 3; k++) if (k) W0.box(0.36, 0.01, 0.06, M.line, xe, 0.05, rz + k * 0.12);
-    const num = txt => new THREE.MeshStandardMaterial({ transparent: true, map: canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#fff'; c.font = `bold 40px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, w / 2, h / 2); }) });
-    const n09 = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), num('09'));
-    n09.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
-    n09.position.set(rx0 + 0.8, 0.052, rz);
-    const n27 = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), num('27'));
-    n27.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
-    n27.position.set(rx1 - 0.8, 0.052, rz);
-    root.add(n09, n27);
-    const edgeLight = std('#fff3b0', { emissive: '#ffd43b', emissiveIntensity: 0.8 }), endLight = std('#b2f2bb', { emissive: '#40c057', emissiveIntensity: 0.8 });
-    for (let x = rx0; x <= rx1 + 0.01; x += 0.7) for (const sx of [-1, 1]) W0.cyl(0.025, 0.025, 0.05, edgeLight, x, 0.01, rz + sx * 0.62, 6);
-    for (let k = -3; k <= 3; k++) { W0.cyl(0.025, 0.025, 0.05, endLight, rx0 - 0.15, 0.01, rz + k * 0.14, 6); W0.cyl(0.025, 0.025, 0.05, M.redLight, rx1 + 0.15, 0.01, rz + k * 0.14, 6); }
-    // 滑行道（黄色中线）连接跑道和停机坪
-    const apronZ = rz + 1.65, ax = rx0 + 4.4;
-    W0.box(0.55, 0.035, 1.1, M.asphalt, rx0 + 7.9, 0.01, rz + 0.95);
-    W0.box(0.04, 0.01, 1.1, M.yellow, rx0 + 7.9, 0.045, rz + 0.95);
-    W0.box(7.6, 0.035, 1.5, M.concrete, ax, 0.01, apronZ);
-    W0.box(7.0, 0.01, 0.04, M.yellow, ax, 0.046, apronZ - 0.35);
-    for (let k = 0; k < 3; k++) { W0.box(0.04, 0.01, 0.7, M.yellow, ax - 1.5 + k * 1.5, 0.046, apronZ + 0.05); W0.box(0.3, 0.01, 0.04, M.yellow, ax - 1.5 + k * 1.5, 0.046, apronZ + 0.4); }
-    // 航站楼：玻璃幕墙 + 波浪形白色屋顶 + 两条登机廊桥
-    const tz = apronZ + 1.25;
-    const A = at(ax, tz);
-    A.box(5.0, 0.12, 1.0, M.concrete, 0, 0, 0);
-    A.box(4.8, 0.5, 0.8, M.glass, 0, 0.12, 0);
-    for (let k = 0; k < 13; k++) A.box(0.03, 0.5, 0.82, M.white, -2.4 + k * 0.4, 0.12, 0);
-    const wave = new THREE.Shape();
-    wave.moveTo(-0.62, 0); wave.quadraticCurveTo(0, 0.42, 0.62, 0); wave.lineTo(0.62, 0.05); wave.quadraticCurveTo(0, 0.48, -0.62, 0.05); wave.closePath();
-    const wg2 = new THREE.ExtrudeGeometry(wave, { depth: 5.3, bevelEnabled: false, curveSegments: 12 });
-    wg2.translate(0, 0, -2.65);
-    A.geo(wg2, M.white, 0, 0.62, 0, { ry: Math.PI / 2 });
-    for (const bx of [-1.2, 1.2]) {
-      A.box(0.16, 0.16, 0.75, std('#dee2e6'), bx, 0.3, -0.75);
-      A.box(0.2, 0.22, 0.2, std('#dee2e6'), bx, 0.25, -1.15);
-      A.cyl(0.03, 0.03, 0.3, M.grey, bx, 0, -1.05, 6);
-    }
-    const sign = canvasTex(256, 48, (c, w, h) => { c.fillStyle = '#1c7ed6'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = `bold 30px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('✈ 欢乐城机场', w / 2, h / 2 + 2); });
-    const sg = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.3), new THREE.MeshStandardMaterial({ map: sign }));
-    sg.position.set(ax, 0.92, tz + 0.52);
-    root.add(sg);
-    // 塔台
-    const [, Ct] = spot(root, rx0 + 9.0, tz - 0.1);
-    Ct.cyl(0.16, 0.24, 1.7, M.white, 0, 0, 0, 12);
-    Ct.cyl(0.26, 0.26, 0.06, M.dark, 0, 1.7, 0, 12);
-    Ct.cyl(0.42, 0.3, 0.35, M.glass, 0, 1.76, 0, 12);
-    Ct.cyl(0.46, 0.46, 0.06, M.dark, 0, 2.11, 0, 12);
-    Ct.box(0.2, 0.06, 0.2, M.grey, 0, 2.17, 0);
-    Ct.cyl(0.012, 0.012, 0.45, M.grey, 0, 2.23, 0, 4);
-    const radar = Ct.box(0.3, 0.08, 0.03, M.white, 0, 2.3, 0);
-    const beacon = Ct.ball(0.045, M.redLight, 0, 2.7, 0);
-    ticks.push((t, dt) => { beacon.visible = Math.sin(t * 5) > 0; radar.rotation.y += dt * 2; });
-    // 机库：拱形顶，门口能看到里面一架小飞机
-    const hx = rx1 - 1.0, hz = apronZ + 0.95;
-    const hang = new THREE.Shape();
-    hang.moveTo(-0.8, 0); hang.absarc(0, 0, 0.8, 0, Math.PI, false); hang.closePath();
-    const hg = new THREE.ExtrudeGeometry(hang, { depth: 1.5, bevelEnabled: false, curveSegments: 12 });
-    hg.translate(0, 0, -0.75);
-    W0.geo(hg, std('#ced4da', { metalness: 0.4, roughness: 0.4 }), hx, 0, hz, { sy: 0.8 });
-    W0.box(1.2, 0.5, 0.02, std('#495057'), hx, 0, hz - 0.76);
-    for (let k = -3; k <= 3; k++) W0.box(0.02, 0.02, 1.5, M.grey, hx + k * 0.22, 0.62 - Math.abs(k) * 0.06, hz, {});
-    // 风向袋
-    const WS = at(rx1 + 0.7, rz + 0.95);
-    WS.cyl(0.015, 0.015, 0.7, M.grey, 0, 0, 0, 4);
-    const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.03, 0.35, 8, 1, true), std('#ff6b00', { side: THREE.DoubleSide }));
-    sock.rotation.z = Math.PI / 2;
-    sock.position.set(rx1 + 0.88, 0.66, rz + 0.95);
-    root.add(sock);
-    ticks.push(t => { sock.rotation.y = Math.sin(t * 0.7) * 0.4; sock.rotation.z = Math.PI / 2 - 0.1 + Math.sin(t * 3) * 0.05; });
-    reserve(rx0 - 0.4, rz - 0.75, rx1 + 1.0, tz + 0.6);
+    const rz = -OUT_D + 0.7, rx0 = 3.0, rx1 = OUT_W - 2.6;
+    const ar = buildAirport(root, { rz, rx0, rx1, IW, ID, ticks });      // 机场：sub-airport.js
+    reserve(ar.x0, ar.z0, ar.x1, ar.z1);
 
-    // 飞机：机头朝 +z（方便 lookAt），白色机身、蓝色尾翼和腰线
-    function plane(scale = 1) {
-      const p = new THREE.Group();
-      const K = kit(p);
-      K.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.9, 4, 12), M.white), 0, 0, 0).rotation.x = Math.PI / 2;
-      K.add(new THREE.Mesh(new THREE.CylinderGeometry(0.122, 0.122, 0.7, 12, 1, true), std('#1c7ed6')), 0, -0.02, 0.05).scale.set(1, 1, 0.25);
-      const wing = new THREE.Shape();
-      wing.moveTo(0, 0.12); wing.lineTo(0.68, -0.12); wing.lineTo(0.68, -0.22); wing.lineTo(0, -0.1); wing.lineTo(-0.68, -0.22); wing.lineTo(-0.68, -0.12); wing.closePath();
-      K.add(new THREE.Mesh(new THREE.ExtrudeGeometry(wing, { depth: 0.025, bevelEnabled: false }), M.white), 0, -0.04, 0.05).rotation.x = Math.PI / 2;
-      K.box(0.46, 0.02, 0.12, M.white, 0, 0.03, -0.5);
-      K.box(0.022, 0.26, 0.22, std('#1c7ed6'), 0, 0.06, -0.52);
-      for (const sx of [-1, 1]) K.cyl(0.045, 0.045, 0.18, M.grey, sx * 0.3, -0.12, 0.05, 8).rotation.x = Math.PI / 2;
-      K.box(0.14, 0.04, 0.02, M.dark, 0, 0.06, 0.52);
-      for (let k = 0; k < 6; k++) for (const sx of [-1, 1]) K.box(0.01, 0.03, 0.03, M.dark, sx * 0.12, 0.04, 0.35 - k * 0.12);
-      p.scale.setScalar(scale);
-      root.add(p);
-      return p;
-    }
-    const parked = plane(1.1);
-    parked.position.set(ax - 1.2, 0.22, apronZ - 0.1);
-    parked.rotation.y = Math.PI;
-    const inHangar = plane(0.6);
-    inHangar.position.set(hx, 0.13, hz);
-    inHangar.rotation.y = Math.PI;
-    // 飞的一架：沿着一条闭合的三维航线，地面滑行慢、空中快
-    const fy = 0.22;
-    const route = new THREE.CatmullRomCurve3([
-      [rx0 + 0.8, fy, rz], [rx0 + 4, fy, rz], [rx0 + 8, fy + 0.05, rz], [rx1, 1.2, rz], [rx1 + 6, 3.5, rz - 3],
-      [rx1 + 8, 6, -ID - 12], [0, 8, -ID - 20], [-IW - 6, 7, -ID - 10], [-IW + 2, 4, rz - 6], [rx0 - 6, 1.6, rz - 0.8], [rx0 - 2, 0.5, rz],
-    ].map(a => new THREE.Vector3(...a)), true, 'centripetal');
-    const flyer = plane(1.2);
-    let fu = 0;
-    ticks.push((t, dt) => {
-      const p = route.getPointAt(fu);
-      fu = (fu + dt * (p.y < 0.4 ? 0.006 : 0.016)) % 1;
-      const q = route.getPointAt(fu), ahead = route.getPointAt((fu + 0.004) % 1);
-      flyer.position.copy(q);
-      flyer.lookAt(ahead);
-      flyer.rotateZ(Math.sin(fu * Math.PI * 2) * 0.25 * Math.min(1, q.y / 3));
-    });
-
-
-    // 东边北段：体育场——三层看台（蓝白相间）、顶棚、球场、记分牌、灯架，门口一个小停车场
-    const sx0 = midE, sz0 = -4.9;
-    const S = at(sx0, sz0);
-    const ell = (r, h, y, mat, open = true) => S.geo(new THREE.CylinderGeometry(r, r * 0.97, h, 36, 1, open), mat, 0, y + h / 2, 0, { sx: 1.0, sz: 1.42 });
-    const seatA = std('#1c7ed6', { side: THREE.DoubleSide }), seatB = std('#e9ecef', { side: THREE.DoubleSide });
-    ell(1.55, 0.18, 0, seatB, false);
-    ell(1.62, 0.22, 0.18, seatA);
-    ell(1.72, 0.22, 0.4, seatB);
-    ell(1.82, 0.22, 0.62, seatA);
-    ell(1.86, 0.06, 0.84, M.white);
-    S.geo(new THREE.TorusGeometry(1.7, 0.18, 4, 36), std('#f8f9fa', { side: THREE.DoubleSide }), 0, 0.95, 0, { rx: Math.PI / 2, sy: 1.42, sz: 0.3 });
-    const field = canvasTex(64, 96, (c, w, h) => {
-      c.fillStyle = '#4caf50'; c.fillRect(0, 0, w, h);
-      c.fillStyle = '#43a047'; for (let y = 0; y < h; y += 12) c.fillRect(0, y, w, 6);
-      c.strokeStyle = '#fff'; c.lineWidth = 2; c.strokeRect(5, 5, w - 10, h - 10);
-      c.beginPath(); c.moveTo(5, h / 2); c.lineTo(w - 5, h / 2); c.stroke();
-      c.beginPath(); c.arc(w / 2, h / 2, 8, 0, Math.PI * 2); c.stroke();
-      c.strokeRect(w / 2 - 12, 5, 24, 12); c.strokeRect(w / 2 - 12, h - 17, 24, 12);
-    });
-    const pitch = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 3.2), new THREE.MeshStandardMaterial({ map: field }));
-    pitch.rotation.x = -Math.PI / 2;
-    pitch.position.set(sx0, 0.19, sz0);
-    pitch.scale.set(0.95, 0.95, 1);
-    root.add(pitch);
-    for (const [x, z] of [[-1.5, -1.9], [1.5, -1.9], [-1.5, 1.9], [1.5, 1.9]]) {
-      S.cyl(0.03, 0.04, 1.6, M.grey, x, 0, z, 6);
-      S.box(0.36, 0.2, 0.05, std('#fff8d6', { emissive: '#fff3b0', emissiveIntensity: 0.6 }), x, 1.58, z, { ry: Math.atan2(-x, -z) });
-    }
-    const board = canvasTex(128, 48, (c, w, h) => { c.fillStyle = '#111'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffd43b'; c.font = 'bold 30px monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('2 : 1', w / 2, h / 2 + 2); });
-    S.box(0.06, 0.4, 0.06, M.dark, -0.3, 0.8, -2.45);
-    S.box(0.06, 0.4, 0.06, M.dark, 0.3, 0.8, -2.45);
-    const sb = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.3), new THREE.MeshBasicMaterial({ map: board }));
-    sb.position.set(sx0, 1.35, sz0 - 2.42);
-    root.add(sb);
-    reserve(sx0 - 2.0, sz0 - 2.8, sx0 + 2.0, sz0 + 2.8);
+    // 东边北段：体育场（sub-stadium.js）
+    const st = buildStadium(root, { x: midE, z: -4.9 });
+    reserve(st.x0, st.z0, st.x1, st.z1);
   }
 
   // ---------- 西边：海上的港口和货轮 ----------
   {
-    // 港口：海里的码头平台
-    const qx0 = -IW - 0.2, qx1 = -IW - 4.2, qz0 = -1.5, qz1 = 8.2;
-    const qcx = (qx0 + qx1) / 2, qcz = (qz0 + qz1) / 2, qw = Math.abs(qx1 - qx0), qd = qz1 - qz0;
-    const Q = at(qcx, qcz);
-    Q.box(qw, 0.3, qd, M.concrete, 0, -0.3, 0);
-    Q.box(qw, 0.06, qd, std('#8d8a83'), 0, -0.36, 0);
-    for (let z = -qd / 2 + 0.3; z < qd / 2; z += 0.9) Q.cyl(0.08, 0.08, 0.6, M.grey, -qw / 2 + 0.15, -0.9, z, 6);
-    // 码头边：黄线、系缆桩、轮胎护舷
-    Q.box(0.04, 0.005, qd - 0.2, M.yellow, -qw / 2 + 0.35, 0, 0);
-    for (let z = -qd / 2 + 0.5; z < qd / 2; z += 0.8) { Q.cyl(0.04, 0.05, 0.1, M.dark, -qw / 2 + 0.15, 0, z, 8); Q.geo(new THREE.TorusGeometry(0.08, 0.03, 6, 10), M.tire, -qw / 2 - 0.01, -0.15, z + 0.4, { ry: Math.PI / 2 }); }
-    // 栈桥连到岛上
-    const B = at(-IW + 0.4, 3.4);
-    B.box(2.4, 0.08, 1.0, M.concrete, -0.6, -0.08, 0);
-    for (const s of [-1, 1]) B.box(2.4, 0.1, 0.03, M.grey, -0.6, 0, s * 0.48);
-    // 集装箱堆（带竖条纹）
-    const boxColors = ['#e03131', '#1c7ed6', '#f59f00', '#2f9e44', '#868e96', '#7048e8'];
-    const stripes = boxColors.map(c => new THREE.MeshStandardMaterial({ roughness: 0.7, map: canvasTex(32, 16, (g, w, h) => { g.fillStyle = c; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.18)'; for (let x = 0; x < w; x += 4) g.fillRect(x, 0, 1, h); }) }));
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 6; j++) for (let h = 0; h < 1 + ((i * 7 + j * 3) % 3); h++) {
-      Q.box(0.6, 0.25, 0.25, stripes[(i * 5 + j + h) % stripes.length], 0.45 + i * 0.64 - 1.3, h * 0.26, -qd / 2 + 3.0 + j * 0.28);
-    }
-    // 仓库：屋顶有一道道棱，墙上写“港口”
-    const wx = 0.5, wz = qd / 2 - 1.3;
-    Q.box(1.8, 0.65, 1.6, std('#adb5bd'), wx, 0, wz);
-    for (let k = 0; k < 7; k++) Q.box(0.12, 0.06, 1.66, std('#e03131'), wx - 0.84 + k * 0.28, 0.65, wz);
-    Q.box(0.6, 0.45, 0.02, M.dark, wx, 0, wz - 0.81);
-    const ps = canvasTex(128, 48, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); c.fillStyle = '#1c7ed6'; c.font = `bold 32px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('欢乐港', w / 2, h / 2 + 2); });
-    const psm = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.25), new THREE.MeshStandardMaterial({ map: ps }));
-    psm.position.set(qcx + wx, 0.5, qcz + wz + 0.815);
-    root.add(psm);
-    // 门式起重机：四条腿、横梁伸到海面上、小车和吊钩
-    for (const cz of [-qd / 2 + 1.0, -qd / 2 + 2.3]) {
-      const crane = std('#f59f00');
-      for (const sz of [-0.32, 0.32]) for (const sx of [-0.5, 0.5]) Q.box(0.07, 1.9, 0.07, crane, -qw / 2 + 1.0 + sx, 0, cz + sz);
-      for (const sx of [-0.5, 0.5]) Q.box(0.06, 0.06, 0.7, crane, -qw / 2 + 1.0 + sx, 0.9, cz);
-      Q.box(3.0, 0.12, 0.1, crane, -qw / 2 + 0.2, 1.9, cz - 0.32);
-      Q.box(3.0, 0.12, 0.1, crane, -qw / 2 + 0.2, 1.9, cz + 0.32);
-      Q.box(0.3, 0.22, 0.7, M.white, -qw / 2 + 1.25, 2.02, cz);
-      Q.box(0.22, 0.12, 0.5, M.dark, -qw / 2 - 0.7, 1.78, cz);
-      Q.box(0.01, 0.75, 0.01, M.dark, -qw / 2 - 0.7, 1.03, cz);
-      Q.box(0.16, 0.06, 0.12, M.yellow, -qw / 2 - 0.7, 0.98, cz);
-    }
-    // 集卡
-    const Tr = at(qcx + 1.2, qcz - 0.2, Math.PI / 2);
-    Tr.box(0.3, 0.26, 0.28, M.blue, 0.55, 0, 0);
-    Tr.box(0.9, 0.06, 0.26, M.dark, -0.1, 0.06, 0);
-    Tr.box(0.8, 0.25, 0.26, stripes[0], -0.1, 0.12, 0);
-    // 货轮
-    function ship(len, color) {
-      const s = new THREE.Group();
-      const K = kit(s);
-      const hull = new THREE.Shape();
-      hull.moveTo(-len / 2, -0.35); hull.lineTo(len / 2 - 0.4, -0.35); hull.lineTo(len / 2, 0.05); hull.lineTo(-len / 2, 0.05); hull.closePath();
-      K.add(new THREE.Mesh(new THREE.ExtrudeGeometry(hull, { depth: 0.7, bevelEnabled: false }), std(color)), 0, 0, -0.35);
-      K.box(len * 0.98, 0.04, 0.72, std('#7f2a2a'), -0.02, -0.33, 0);
-      K.box(0.6, 0.6, 0.62, M.white, -len / 2 + 0.45, 0.05, 0);
-      for (let i = 0; i < 3; i++) K.box(0.62, 0.04, 0.64, M.glass, -len / 2 + 0.45, 0.2 + i * 0.15, 0);
-      K.box(0.14, 0.3, 0.14, std('#212529'), -len / 2 + 0.35, 0.65, 0);
-      K.box(0.15, 0.06, 0.15, M.red, -len / 2 + 0.35, 0.9, 0);
-      for (let i = 0; i < Math.floor((len - 1.4) / 0.62); i++) for (let h = 0; h < 2; h++) {
-        K.box(0.58, 0.24, 0.6, stripes[(i + h) % stripes.length], -len / 2 + 1.15 + i * 0.62, 0.05 + h * 0.25, 0);
-      }
-      root.add(s);
-      return s;
-    }
-    const docked = ship(4.4, '#2b3442');
-    docked.position.set(qx1 - 0.6, -0.55, 3.3);
-    docked.rotation.y = Math.PI / 2;
-    const sail = ship(5, '#1864ab');
-    const sea = new THREE.CatmullRomCurve3([
-      [-IW - 12, 0, -2], [-IW - 8, 0, ID + 9], [0, 0, ID + 12], [IW + 10, 0, ID + 6], [IW + 13, 0, -6], [IW + 4, 0, -ID - 11], [-6, 0, -ID - 13], [-IW - 10, 0, -ID - 4],
-    ].map(a => new THREE.Vector3(...a)), true);
-    let su = 0;
-    // 船尾的白色浪花
-    const wake = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.5), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, depthWrite: false }));
-    wake.rotation.x = -Math.PI / 2;
-    wake.position.set(-3.2, -0.18, 0);
-    sail.add(wake);
-    ticks.push((t, dt) => {
-      su = (su + dt * 0.0035) % 1;
-      const p = sea.getPointAt(su), tg = sea.getTangentAt(su);
-      sail.position.set(p.x, -0.55 + Math.sin(t * 1.3) * 0.03, p.z);
-      sail.rotation.set(0, Math.atan2(-tg.z, tg.x), Math.sin(t * 1.1) * 0.03);
-      wake.material.opacity = 0.4 + Math.sin(t * 4) * 0.1;
-    });
+    buildHarbor(root, { IW, ID, ticks });          // 港口和货轮：sub-harbor.js
   }
 
   // ---------- 东边：海上风车 ----------
   {
-    // 海上风车
-    const turbines = [];
-    [-9, -1, 7].forEach((z, k) => {
-      const [, Tk] = spot(root, IW + 5 + (k % 2) * 2, z);
-      Tk.cyl(0.3, 0.35, 0.5, M.concrete, 0, -0.8, 0, 10);
-      Tk.cyl(0.32, 0.32, 0.06, M.yellow, 0, -0.32, 0, 10);
-      Tk.cyl(0.05, 0.1, 4.4, M.white, 0, -0.2, 0, 8);
-      Tk.box(0.2, 0.18, 0.45, M.white, 0, 4.12, -0.05);
-      const rotor = new THREE.Group();
-      Tk.add(rotor, 0, 4.21, 0.22);
-      kit(rotor).ball(0.07, M.white, 0, 0, 0);
-      for (let b = 0; b < 3; b++) {
-        const arm = new THREE.Group();
-        arm.rotation.z = b / 3 * Math.PI * 2;
-        rotor.add(arm);
-        const blade = new THREE.Shape();
-        blade.moveTo(-0.03, 0); blade.lineTo(0.06, 0.15); blade.lineTo(0.02, 1.6); blade.lineTo(-0.02, 1.6); blade.closePath();
-        kit(arm).add(new THREE.Mesh(new THREE.ExtrudeGeometry(blade, { depth: 0.02, bevelEnabled: false }), M.white), 0, 0, 0);
-      }
-      turbines.push(rotor);
-    });
-    ticks.push((t, dt) => turbines.forEach((r, k) => { r.rotation.z += dt * (1.2 + k * 0.15); }));
+    buildTurbines(root, { IW, ticks });             // 海上风车：sub-scenery.js
   }
 
   // ---------- 南边（镜头这一侧）：全是矮的 ----------
   {
     const z = midS;
-    // 西段：沙滩——排球场、遮阳伞和躺椅、浴巾、沙堡、救生椅、椰子树
-    const bx = -9.6;
-    const sandTex = canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#f1dca6'; c.fillRect(0, 0, w, h); for (let k = 0; k < 160; k++) { c.fillStyle = k % 2 ? '#e4cb8f' : '#fbecc4'; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }, [4, 2]);
-    const sand = new THREE.Mesh(new THREE.BoxGeometry(7, 0.04, bandD - 0.2), new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1 }));
-    sand.position.set(bx, 0.02, z);
-    sand.receiveShadow = true;
-    root.add(sand);
-    const S = at(bx, z);
-    // 排球场
-    S.box(1.9, 0.005, 1.1, std('#e8c97d'), -2.2, 0.04, 0);
-    for (const [w, d, x, zz] of [[1.9, 0.03, -2.2, -0.55], [1.9, 0.03, -2.2, 0.55], [0.03, 1.1, -3.15, 0], [0.03, 1.1, -1.25, 0]]) S.box(w, 0.006, d, M.white, x, 0.045, zz);
-    S.cyl(0.02, 0.02, 0.5, M.white, -2.2, 0.04, -0.62, 4);
-    S.cyl(0.02, 0.02, 0.5, M.white, -2.2, 0.04, 0.62, 4);
-    const net = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.16), new THREE.MeshStandardMaterial({ transparent: true, side: THREE.DoubleSide, map: canvasTex(64, 16, (c, w, h) => { c.strokeStyle = '#fff'; c.lineWidth = 1; for (let x = 0; x < w; x += 4) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); } for (let y = 0; y < h; y += 4) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); } c.fillStyle = '#fff'; c.fillRect(0, 0, w, 2); }) }));
-    net.position.set(bx - 2.2, 0.44, z);
-    net.rotation.y = Math.PI / 2;
-    root.add(net);
-    S.ball(0.06, C('#ffd43b'), -2.6, 0.1, 0.2);
-    // 伞和躺椅，前面是浴巾
-    ['#ff6b6b', '#4dabf7', '#ffd34d', '#51cf66'].forEach((c, k) => {
-      const x = -0.3 + k * 0.9;
-      const tex = canvasTex(64, 8, (g, w) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? c : '#ffffff'; g.fillRect(i * w / 8, 0, w / 8, 8); } });
-      S.cyl(0.015, 0.015, 0.62, M.white, x, 0.04, -0.6, 4);
-      S.geo(new THREE.ConeGeometry(0.34, 0.14, 16, 1, true), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide }), x, 0.65, -0.6);
-      for (const s of [-1, 1]) {
-        S.box(0.15, 0.025, 0.36, M.white, x + s * 0.17, 0.09, -0.15);
-        S.box(0.15, 0.025, 0.16, M.white, x + s * 0.17, 0.14, -0.38, { rx: 0.7 });
-      }
-      S.box(0.22, 0.005, 0.42, C(['#e64980', '#20c997', '#fab005', '#7048e8'][k]), x, 0.045, 0.45);
-    });
-    // 沙堡
-    S.box(0.36, 0.1, 0.3, std('#e4c88a'), 2.9, 0.04, 0.6);
-    for (const [x, zz] of [[2.75, 0.47], [3.05, 0.47], [2.75, 0.73], [3.05, 0.73]]) { S.cyl(0.05, 0.06, 0.18, std('#e4c88a'), x, 0.04, zz, 8); S.cone(0.06, 0.08, std('#e4c88a'), x, 0.22, zz, 8); }
-    S.cyl(0.04, 0.03, 0.08, M.red, 2.55, 0.04, 0.75, 8);
-    // 救生椅
-    for (const [x, zz] of [[3.0, -0.4], [3.3, -0.4], [3.0, -0.1], [3.3, -0.1]]) S.box(0.03, 0.55, 0.03, M.white, x, 0.04, zz);
-    S.box(0.38, 0.03, 0.38, M.white, 3.15, 0.59, -0.25);
-    S.box(0.38, 0.22, 0.03, M.red, 3.15, 0.62, -0.42);
-    reserve(bx - 3.5, z - bandD / 2, bx + 3.5, z + bandD / 2);
-    [[-13.6, z - 1.0], [-6.1, z + 1.2]].forEach(([x, zz]) => { const p = palmTree(0.9); p.position.set(x, 0, zz); root.add(p); });
-
-
-    // 中间：欢迎花坛——一圈圈花环、小喷泉，后面是欢迎牌
-    const Wl = at(0, z);
-    Wl.cyl(1.25, 1.3, 0.08, M.white, 0, 0, 0.1, 32);
-    const ringColors = ['#ff7aa2', '#ffd43b', '#c084fc', '#ffffff'];
-    for (let r = 0; r < 4; r++) {
-      const rr = 1.15 - r * 0.25, cnt = Math.round(rr * 22);
-      for (let k = 0; k < cnt; k++) { const a = k / cnt * Math.PI * 2; Wl.geo(new THREE.IcosahedronGeometry(0.07, 0), C(ringColors[r]), Math.cos(a) * rr, 0.13, 0.1 + Math.sin(a) * rr * 0.8, {}); }
-    }
-    Wl.cyl(0.32, 0.36, 0.12, M.white, 0, 0.08, 0.1, 20);
-    Wl.cyl(0.05, 0.06, 0.2, M.white, 0, 0.2, 0.1, 8);
-    const tex = canvasTex(512, 128, (c, w, h) => {
-      const gr = c.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#ff6b6b'); gr.addColorStop(1, '#ffa94d');
-      c.fillStyle = gr; c.fillRect(0, 0, w, h);
-      c.strokeStyle = '#fff'; c.lineWidth = 10; c.strokeRect(6, 6, w - 12, h - 12);
-      c.fillStyle = '#fff'; c.font = `bold 72px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('欢迎来到 欢乐城', w / 2, h / 2 + 4);
-    });
-    const [, Sg] = spot(root, 0, z - 1.25);
-    Sg.box(3.2, 0.75, 0.08, new THREE.MeshStandardMaterial({ map: tex }), 0, 0.3, 0);
-    Sg.box(3.3, 0.06, 0.12, M.white, 0, 1.05, 0);
-    Sg.box(0.14, 0.32, 0.14, M.stone, -1.45, 0, 0);
-    Sg.box(0.14, 0.32, 0.14, M.stone, 1.45, 0, 0);
-    const water = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.4, 8), new THREE.MeshStandardMaterial({ color: '#bff0ff', transparent: true, opacity: 0.7 }));
-    water.position.set(0, 0.6, z + 0.1);
-    root.add(water);
-    ticks.push(t => { water.scale.y = 1 + Math.sin(t * 5) * 0.15; });
+    buildSouth(root, { z, bandD, ID, ticks });      // 沙滩、欢迎花坛、水上乐园、游艇码头：sub-south.js
+    reserve(-9.6 - 3.5, z - bandD / 2, -9.6 + 3.5, z + bandD / 2);
     reserve(-1.7, z - 1.6, 1.7, z + 1.5);
-
-
-    // 东段：水上乐园——瓷砖泳池、分道线、螺旋滑梯、懒人河、躺椅、凉亭、围栏
-    const wx = 9.6;
-    const tile = canvasTex(32, 32, (c, w, h) => { c.fillStyle = '#e9e3d6'; c.fillRect(0, 0, w, h); c.strokeStyle = '#d6cfc0'; c.strokeRect(0, 0, w, h); }, [14, 7]);
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(7, 0.05, bandD - 0.2), new THREE.MeshStandardMaterial({ map: tile }));
-    deck.position.set(wx, 0.025, z);
-    deck.receiveShadow = true;
-    root.add(deck);
-    const P = at(wx, z);
-    const pool = (x, zz, w, d) => { P.box(w + 0.16, 0.08, d + 0.16, M.white, x, 0, zz); P.box(w, 0.02, d, std('#3bc9db', { roughness: 0.1, metalness: 0.1 }), x, 0.075, zz); };
-    pool(-2.0, -0.3, 2.2, 1.5);
-    for (let k = 1; k < 4; k++) for (let i = 0; i < 10; i++) P.ball(0.025, i % 2 ? M.red : M.white, -3.0 + i * 0.22, 0.1, -0.3 - 0.75 + k * 0.375);
-    pool(0.8, 0.4, 1.4, 1.0);
-    P.geo(new THREE.TorusGeometry(0.7, 0.2, 6, 28), M.white, 2.55, 0.03, -0.1, { rx: -Math.PI / 2, sz: 0.25 });
-    P.geo(new THREE.TorusGeometry(0.7, 0.14, 6, 28), std('#3bc9db', { roughness: 0.1 }), 2.55, 0.06, -0.1, { rx: -Math.PI / 2, sz: 0.2 });
-    // 螺旋滑梯：塔 + 螺旋管
-    const [, Tw] = spot(root, wx - 0.3, z - 1.3);
-    Tw.box(0.4, 1.0, 0.4, M.yellow, 0, 0, 0);
-    Tw.box(0.5, 0.06, 0.5, M.red, 0, 1.0, 0);
-    Tw.cone(0.36, 0.3, M.red, 0, 1.06, 0, 4).rotation.y = Math.PI / 4;
-    const helix = [];
-    for (let k = 0; k <= 40; k++) { const a = k / 40 * Math.PI * 3; helix.push(new THREE.Vector3(Math.cos(a) * 0.45, 0.95 - k / 40 * 0.85, Math.sin(a) * 0.45)); }
-    helix.push(new THREE.Vector3(-0.2, 0.08, 0.7));
-    Tw.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(helix), 60, 0.07, 8), std('#ff6b8a', { roughness: 0.4 })), 0.2, 0, 0.2);
-    // 躺椅和遮阳伞、凉亭
-    ['#ff922b', '#22b8cf', '#e64980'].forEach((c, k) => {
-      const x = 0.0 + k * 0.85;
-      P.cyl(0.015, 0.015, 0.55, M.white, x, 0.05, 1.25, 4);
-      P.cone(0.3, 0.12, C(c), x, 0.55, 1.25, 10);
-      P.box(0.15, 0.025, 0.34, M.white, x - 0.18, 0.1, 1.2);
-      P.box(0.15, 0.025, 0.34, M.white, x + 0.18, 0.1, 1.2);
-    });
-    P.box(0.9, 0.04, 0.7, M.plank, 3.0, 0.05, 1.1);
-    for (const [x, zz] of [[2.6, 0.8], [3.4, 0.8], [2.6, 1.4], [3.4, 1.4]]) P.box(0.04, 0.5, 0.04, M.white, x, 0.05, zz);
-    P.cone(0.65, 0.25, std('#c5a46d', { flatShading: true }), 3.0, 0.55, 1.1, 4, { ry: Math.PI / 4 });
-    fence(wx - 3.5, z - bandD / 2 + 0.1, wx + 3.5, z - bandD / 2 + 0.1, M.white, 0.18);
-    reserve(wx - 3.5, z - bandD / 2, wx + 3.5, z + bandD / 2);
-
-    // 海上的游艇码头：浮桥、带桅杆的帆船、小快艇
-    const yx = -9, yz = ID + 0.3;
-    W0.box(0.45, 0.06, 3.4, M.plank, yx, -0.12, yz + 1.5);
-    for (let k = 0; k < 6; k++) W0.box(1.1, 0.05, 0.22, M.plank, yx + (k % 2 ? 0.75 : -0.75), -0.12, yz + 0.5 + Math.floor(k / 2) * 1.1);
-    const yachts = [];
-    [[-1.3, 0.9, 1], [1.3, 0.9, 0], [-1.3, 2.0, 0], [1.3, 2.0, 1], [-1.3, 3.1, 1]].forEach(([x, zz, mast], k) => {
-      const [g, Bt] = spot(root, yx + x, yz + zz, 0, -0.62);
-      const hull = new THREE.Shape();
-      hull.moveTo(-0.45, 0.05); hull.lineTo(0.3, 0.05); hull.lineTo(0.5, 0.18); hull.lineTo(-0.48, 0.18); hull.closePath();
-      Bt.add(new THREE.Mesh(new THREE.ExtrudeGeometry(hull, { depth: 0.3, bevelEnabled: false }), M.white), 0, 0, -0.15);
-      Bt.box(0.9, 0.02, 0.28, M.plank, -0.02, 0.18, 0);
-      Bt.box(0.35, 0.13, 0.22, M.glass, -0.1, 0.2, 0);
-      Bt.box(0.9, 0.03, 0.31, C(['#1c7ed6', '#e03131', '#20c997'][k % 3]), 0, 0.1, 0);
-      if (mast) {
-        Bt.cyl(0.012, 0.012, 1.3, M.grey, 0.05, 0.2, 0, 4);
-        const sailS = new THREE.Shape();
-        sailS.moveTo(0, 0); sailS.lineTo(0.42, 0); sailS.lineTo(0, 1.05); sailS.closePath();
-        const sl = Bt.add(new THREE.Mesh(new THREE.ShapeGeometry(sailS), std('#ffffff', { side: THREE.DoubleSide })), 0.07, 0.35, 0);
-        sl.castShadow = true;
-      }
-      yachts.push({ g, ph: k * 1.3 });
-    });
-    ticks.push(t => yachts.forEach(({ g, ph }) => { g.position.y = -0.62 + Math.sin(t * 1.4 + ph) * 0.025; g.rotation.x = Math.sin(t * 1.1 + ph) * 0.04; }));
+    reserve(9.6 - 3.5, z - bandD / 2, 9.6 + 3.5, z + bandD / 2);
+    [[-13.6, z - 1.0], [-6.1, z + 1.2]].forEach(([x, zz]) => { const p = palmTree(0.9); p.position.set(x, 0, zz); root.add(p); });
   }
 
   // ---------- 合并所有静态零件 ----------
